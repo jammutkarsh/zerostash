@@ -17,7 +17,7 @@ const base = {
 	name: 'Zerostash – bookmarks on your Cloudflare',
 	short_name: 'Zerostash',
 	version,
-	description: 'Save pages to your own Zerostash bookmark server (Cloudflare Workers + D1). Connect with your server URL and secret.',
+	description: 'Save pages to your own Zerostash bookmark server on Cloudflare. One click saves the page; right-click saves links and text.',
 	// Only `activeTab` touches pages by default. `<all_urls>` is optional: requested at
 	// onboarding to fetch link previews for bookmarks saved outside an open tab.
 	permissions: ['storage', 'activeTab', 'scripting', 'contextMenus', 'alarms'],

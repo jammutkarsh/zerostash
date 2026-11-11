@@ -9,3 +9,7 @@ declare namespace Cloudflare {
 		ZEROSTASH_SECRET: string;
 	}
 }
+declare module '*.md?raw' {
+	const content: string;
+	export default content;
+}

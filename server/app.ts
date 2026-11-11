@@ -16,6 +16,7 @@ import {
 } from '../shared/schemas';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, secretConfigured, secretMatches, signSession, verifySession } from './auth';
 import { applyOg, createBookmark, deleteBookmark, getBookmark, listBookmarks, markOgFailed, needsOg, patchBookmark } from './bookmarks';
+import privacyPolicy from './privacy-policy.md?raw';
 
 type AppEnv = { Bindings: Env };
 
@@ -209,5 +210,8 @@ const routes = app
 	);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
+
+// Public privacy policy for the Chrome Web Store listing (served by the Worker, not the SPA).
+app.get('/privacy-policy', (c) => c.text(privacyPolicy, 200, { 'content-type': 'text/markdown; charset=utf-8' }));
 
 export type AppType = typeof routes;
