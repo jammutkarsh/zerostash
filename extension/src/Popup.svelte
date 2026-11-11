@@ -23,7 +23,6 @@
 	let settings = $state<Config | null>(null);
 	let note = $state('');
 	let noteState = $state<'idle' | 'saving' | 'saved'>('idle');
-	let confirmDelete = $state(false);
 	const isMac = navigator.platform.toLowerCase().includes('mac');
 
 	onMount(async () => {
@@ -54,7 +53,6 @@
 	}
 
 	async function remove(bookmark: Bookmark) {
-		if (!confirmDelete) return void (confirmDelete = true);
 		await server.remove(bookmark.id);
 		ui = { kind: 'deleted' };
 	}
@@ -118,8 +116,8 @@
 				<button onclick={() => saveNote(b)} disabled={noteState === 'saving'} class="flex-1 rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-60">
 					{noteState === 'saved' ? 'Note saved ✓' : noteState === 'saving' ? 'Saving…' : 'Save note'}
 				</button>
-				<button onclick={() => remove(b)} onmouseleave={() => (confirmDelete = false)} class="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-destructive hover:bg-muted">
-					<Trash2 class="size-4" />{confirmDelete ? 'Confirm' : 'Delete'}
+				<button onclick={() => remove(b)} class="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-destructive hover:bg-muted">
+					<Trash2 class="size-4" />Delete
 				</button>
 			</div>
 		{:else if ui.kind === 'deleted'}

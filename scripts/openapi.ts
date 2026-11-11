@@ -17,5 +17,5 @@ const doc = app.getOpenAPI31Document({
 });
 
 mkdirSync('dist/client', { recursive: true });
-writeFileSync('dist/client/openapi.json', JSON.stringify(doc, null, '\t'));
+writeFileSync('dist/client/openapi.json', JSON.stringify(doc, null, 2));
 console.log(`openapi.json: ${Object.keys(doc.paths ?? {}).length} paths`);

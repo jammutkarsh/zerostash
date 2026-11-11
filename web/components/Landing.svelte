@@ -1,4 +1,7 @@
 <script lang="ts">
+	import KeyRound from '@lucide/svelte/icons/key-round';
+	import Puzzle from '@lucide/svelte/icons/puzzle';
+	import Rocket from '@lucide/svelte/icons/rocket';
 	import { navigate } from '../lib/router.svelte';
 
 	const REPO = 'https://github.com/jammutkarsh/zerostash';
@@ -49,9 +52,9 @@
 	];
 
 	const steps = [
-		{ title: 'Deploy', body: 'Click “Deploy to Cloudflare”. It copies the repo to your GitHub and creates the Worker and database.' },
-		{ title: 'Set your secret', body: 'Paste a long random string as ZEROSTASH_SECRET. That is your login.' },
-		{ title: 'Connect the extension', body: 'Enter your Worker URL and the secret in the extension. Start saving.' },
+		{ icon: Rocket, title: 'Deploy', body: 'Click “Deploy to Cloudflare”. It copies the repo to your GitHub and creates the Worker and database.' },
+		{ icon: KeyRound, title: 'Set your secret', body: 'Paste a long random string as ZEROSTASH_SECRET. That is your login.' },
+		{ icon: Puzzle, title: 'Connect the extension', body: 'Enter your Worker URL and the secret in the extension. Start saving.' },
 	];
 </script>
 
@@ -79,7 +82,7 @@
 					Open source · MIT · Runs on Cloudflare's free tier
 				</p>
 				<h1 class="text-4xl leading-[1.1] font-bold tracking-tight md:text-6xl">
-					Your bookmarks, on your own Cloudflare. For <span class="text-accent">₹0</span>.
+					Your bookmarks, on your own Cloudflare for <span class="text-accent">₹0</span>.
 				</h1>
 				<p class="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
 					Zerostash is a Karakeep-style bookmark manager that runs entirely on Cloudflare's free tier: a Worker, a D1 database and a
@@ -175,7 +178,10 @@
 				<ol class="mt-8 grid gap-4 md:grid-cols-3">
 					{#each steps as s, i (s.title)}
 						<li class="rounded-xl border bg-background p-5">
-							<span class="text-sm font-semibold text-accent">Step {i + 1}</span>
+							<div class="mb-3 flex items-center gap-3">
+								<span class="grid size-10 place-items-center rounded-lg bg-accent/15 text-accent"><s.icon class="size-5" /></span>
+								<span class="text-sm font-semibold text-accent">Step {i + 1}</span>
+							</div>
 							<h3 class="mt-1 font-semibold">{s.title}</h3>
 							<p class="mt-2 text-sm leading-relaxed text-muted-foreground">{s.body}</p>
 						</li>

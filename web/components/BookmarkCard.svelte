@@ -19,7 +19,6 @@
 	}: { bookmark: Bookmark; layout?: 'masonry' | 'list'; onChange: (b: Bookmark) => void; onRemove: (id: string) => void } = $props();
 
 	let imageFailed = $state(false);
-	let confirmDelete = $state(false);
 	let copied = $state(false);
 	const domain = $derived(bookmark.url ? new URL(bookmark.url).hostname.replace(/^www\./, '') : null);
 	const when = $derived(relativeTime(bookmark.createdAt));
@@ -39,7 +38,6 @@
 	}
 
 	async function remove() {
-		if (!confirmDelete) return void (confirmDelete = true);
 		await api.remove(bookmark.id);
 		onRemove(bookmark.id);
 	}
@@ -70,11 +68,10 @@
 				</button>
 				<button
 					onclick={remove}
-					onmouseleave={() => (confirmDelete = false)}
 					role="menuitem"
 					class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-destructive hover:bg-muted"
 				>
-					<Trash2 class="size-4" />{confirmDelete ? 'Click again to delete' : 'Delete'}
+					<Trash2 class="size-4" />Delete
 				</button>
 			{/snippet}
 		</Menu>
