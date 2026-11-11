@@ -1,0 +1,16 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"types": []
+	},
+	"include": ["global.d.ts", "*.ts", "src/**/*.ts", "src/**/*.svelte", "popup/*.ts", "options/*.ts", "../shared/**/*.ts"],
+	"exclude": ["../shared/**/*.test.ts", "vite.config.ts", "scripts"]
+}

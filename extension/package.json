@@ -1,0 +1,13 @@
+{
+	"name": "zerostash-extension",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build:chrome": "vite build --mode chrome --outDir dist/chrome && bun scripts/generate-manifest.ts chrome dist/chrome/manifest.json",
+		"build:firefox": "vite build --mode firefox --outDir dist/firefox && bun scripts/generate-manifest.ts firefox dist/firefox/manifest.json",
+		"build": "bun run build:chrome && bun run build:firefox",
+		"zip": "bun run build && cd dist/chrome && zip -rq ../../zerostash-chrome.zip . && cd ../firefox && zip -rq ../../zerostash-firefox.xpi .",
+		"check": "svelte-check --tsconfig ./tsconfig.json"
+	}
+}
