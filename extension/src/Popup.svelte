@@ -1,9 +1,14 @@
 <script lang="ts">
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Settings from '@lucide/svelte/icons/settings';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { onMount } from 'svelte';
 	import type { Bookmark } from '../../shared/schemas';
 	import { server } from './lib/api';
 	import { saveTab } from './lib/save';
-	import { getSettings, isConfigured, type Settings } from './lib/settings';
+	import { getSettings, isConfigured, type Settings as Config } from './lib/settings';
 
 	type State =
 		| { kind: 'loading' }
@@ -15,9 +20,11 @@
 		| { kind: 'error'; message: string };
 
 	let ui = $state<State>({ kind: 'loading' });
-	let settings = $state<Settings | null>(null);
+	let settings = $state<Config | null>(null);
 	let note = $state('');
-	let noteSaved = $state(false);
+	let noteState = $state<'idle' | 'saving' | 'saved'>('idle');
+	let confirmDelete = $state(false);
+	const isMac = navigator.platform.toLowerCase().includes('mac');
 
 	onMount(async () => {
 		settings = await getSettings();
@@ -40,12 +47,14 @@
 	}
 
 	async function saveNote(bookmark: Bookmark) {
+		noteState = 'saving';
 		await server.patch(bookmark.id, { note });
-		noteSaved = true;
-		setTimeout(() => (noteSaved = false), 1500);
+		noteState = 'saved';
+		setTimeout(() => (noteState = 'idle'), 1500);
 	}
 
 	async function remove(bookmark: Bookmark) {
+		if (!confirmDelete) return void (confirmDelete = true);
 		await server.remove(bookmark.id);
 		ui = { kind: 'deleted' };
 	}
@@ -53,51 +62,75 @@
 	const domain = (url: string | null) => (url ? new URL(url).hostname.replace(/^www\./, '') : '');
 </script>
 
-<main class="w-80 p-4 text-sm">
-	<header class="mb-3 flex items-center gap-2">
-		<img src="/icons/icon32.png" alt="" class="size-5" />
-		<span class="font-semibold">Zerostash</span>
-		{#if settings?.serverUrl}
-			<a href={`${settings.serverUrl}/dashboard`} target="_blank" class="ml-auto text-xs text-muted-foreground hover:underline">Open app ↗</a>
-		{/if}
+<main class="w-[360px] text-sm">
+	<header class="flex items-center gap-2 border-b bg-sidebar px-4 py-3">
+		<img src="/icons/icon32.png" alt="" class="size-5 rounded" />
+		<span class="font-bold tracking-tight">zerostash</span>
+		<div class="ml-auto flex items-center gap-1">
+			{#if settings?.serverUrl}
+				<a href={`${settings.serverUrl}/dashboard`} target="_blank" title="Open Zerostash" class="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+					<ExternalLink class="size-4" />
+				</a>
+			{/if}
+			<button onclick={() => chrome.runtime.openOptionsPage()} title="Settings" class="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+				<Settings class="size-4" />
+			</button>
+		</div>
 	</header>
 
-	{#if ui.kind === 'loading' || ui.kind === 'saving'}
-		<p class="py-6 text-center text-muted-foreground">{ui.kind === 'saving' ? 'Saving…' : 'Loading…'}</p>
-	{:else if ui.kind === 'setup'}
-		<p class="mb-3">Connect the extension to your Zerostash server to start saving.</p>
-		<button onclick={() => chrome.runtime.openOptionsPage()} class="w-full rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground">
-			Connect
-		</button>
-	{:else if ui.kind === 'confirm'}
-		{@const tab = ui.tab}
-		<p class="mb-1 line-clamp-2 font-medium">{tab.title}</p>
-		<p class="mb-3 truncate text-xs text-muted-foreground">{tab.url}</p>
-		<button onclick={() => save(tab)} class="w-full rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground">Save bookmark</button>
-	{:else if ui.kind === 'saved'}
-		{@const b = ui.bookmark}
-		<div class="mb-3 overflow-hidden rounded-lg border bg-card">
-			{#if b.imageUrl}<img src={b.imageUrl} alt="" referrerpolicy="no-referrer" class="max-h-32 w-full object-cover" />{/if}
-			<div class="p-2">
-				<p class="line-clamp-2 font-medium">{b.title || b.url}</p>
-				<p class="truncate text-xs text-muted-foreground">{domain(b.url)}</p>
+	<div class="p-4">
+		{#if ui.kind === 'loading' || ui.kind === 'saving'}
+			<p class="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+				<LoaderCircle class="size-4 animate-spin" />{ui.kind === 'saving' ? 'Saving to your stash…' : 'Loading…'}
+			</p>
+		{:else if ui.kind === 'setup'}
+			<p class="mb-1 font-semibold">Connect your server</p>
+			<p class="mb-4 text-muted-foreground">Enter your Zerostash URL and secret once, then every click saves the page you're on.</p>
+			<button onclick={() => chrome.runtime.openOptionsPage()} class="w-full rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground">Connect</button>
+		{:else if ui.kind === 'confirm'}
+			{@const tab = ui.tab}
+			<p class="mb-1 line-clamp-2 font-medium">{tab.title}</p>
+			<p class="mb-4 truncate text-xs text-muted-foreground">{tab.url}</p>
+			<button onclick={() => save(tab)} class="w-full rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground">Save bookmark</button>
+		{:else if ui.kind === 'saved'}
+			{@const b = ui.bookmark}
+			<p class="mb-3 flex items-center gap-2 font-medium {ui.alreadyExists ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}">
+				<CircleCheck class="size-4" />{ui.alreadyExists ? 'Already in your stash' : 'Saved to your stash'}
+			</p>
+			<div class="mb-3 overflow-hidden rounded-lg border bg-card shadow-sm">
+				{#if b.imageUrl}<img src={b.imageUrl} alt="" referrerpolicy="no-referrer" class="max-h-36 w-full object-cover" />{/if}
+				<div class="grid grid-cols-1 gap-1 p-3">
+					<p class="line-clamp-2 leading-snug font-medium">{b.title || b.url}</p>
+					<p class="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+						{#if b.faviconUrl}<img src={b.faviconUrl} alt="" referrerpolicy="no-referrer" class="size-3.5 rounded-sm" />{/if}
+						<span class="truncate">{domain(b.url)}</span>
+					</p>
+				</div>
 			</div>
-		</div>
-		<p class="mb-2 text-xs font-medium {ui.alreadyExists ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}">
-			{ui.alreadyExists ? 'Already in your stash' : 'Saved ✓'}
-		</p>
-		<label class="mb-2 grid gap-1 text-xs font-medium">
-			Note
-			<textarea bind:value={note} rows="2" placeholder="Why are you saving this?" class="resize-none rounded-md border bg-card p-2 text-sm font-normal outline-none focus:ring-2 focus:ring-accent"></textarea>
-		</label>
-		<div class="flex gap-2">
-			<button onclick={() => saveNote(b)} class="flex-1 rounded-md border px-3 py-1.5 hover:bg-muted">{noteSaved ? 'Note saved ✓' : 'Save note'}</button>
-			<button onclick={() => remove(b)} class="rounded-md border px-3 py-1.5 text-destructive hover:bg-muted">Delete</button>
-		</div>
-	{:else if ui.kind === 'deleted'}
-		<p class="py-6 text-center text-muted-foreground">Removed from your stash.</p>
-	{:else}
-		<p class="mb-3 text-destructive">{ui.message}</p>
-		<button onclick={() => chrome.runtime.openOptionsPage()} class="text-xs text-muted-foreground hover:underline">Extension settings</button>
-	{/if}
+			<textarea
+				bind:value={note}
+				rows="2"
+				aria-label="Note"
+				placeholder="Add a note: why are you saving this?"
+				class="mb-2 w-full resize-none rounded-md border bg-card p-2 outline-none focus:ring-2 focus:ring-accent/60"
+			></textarea>
+			<div class="flex gap-2">
+				<button onclick={() => saveNote(b)} disabled={noteState === 'saving'} class="flex-1 rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-60">
+					{noteState === 'saved' ? 'Note saved ✓' : noteState === 'saving' ? 'Saving…' : 'Save note'}
+				</button>
+				<button onclick={() => remove(b)} onmouseleave={() => (confirmDelete = false)} class="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-destructive hover:bg-muted">
+					<Trash2 class="size-4" />{confirmDelete ? 'Confirm' : 'Delete'}
+				</button>
+			</div>
+		{:else if ui.kind === 'deleted'}
+			<p class="py-8 text-center text-muted-foreground">Removed from your stash.</p>
+		{:else}
+			<p class="mb-3 text-destructive">{ui.message}</p>
+			<button onclick={() => chrome.runtime.openOptionsPage()} class="text-xs text-muted-foreground underline">Extension settings</button>
+		{/if}
+	</div>
+
+	<footer class="border-t px-4 py-2 text-center text-[11px] text-muted-foreground">
+		{isMac ? '⌘⇧E' : 'Alt+Shift+E'} saves any page · right-click a link to save it
+	</footer>
 </main>

@@ -76,19 +76,31 @@ export async function getBookmark(db: D1Database, id: string): Promise<Bookmark 
 	return row ? toBookmark(row) : null;
 }
 
+const SEARCH_COLUMNS = ['title', 'url', 'description', 'site_name', 'note', 'text', 'summary'];
+
 export async function listBookmarks(
 	db: D1Database,
-	q: { cursor?: string; limit: number; view: 'home' | 'archive' | 'favourites' },
+	q: { cursor?: string; limit: number; view: 'home' | 'archive' | 'favourites'; q?: string },
 ): Promise<BookmarkPage> {
 	const [at, id] = decodeCursor(q.cursor);
-	// Each branch matches an index exactly: bookmarks_home / bookmarks_fav.
-	const where = q.view === 'favourites' ? 'favourited = 1' : `archived = ${q.view === 'archive' ? 1 : 0}`;
+	let where: string;
+	const params: (string | number)[] = [];
+	if (q.q) {
+		// Search covers every bookmark, archived included (Karakeep behaviour). Full scan by
+		// design: ~1 row read per bookmark per search, fine at personal scale.
+		const like = `%${q.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+		where = `(${SEARCH_COLUMNS.map((c) => `${c} LIKE ? ESCAPE '\\'`).join(' OR ')})`;
+		params.push(...SEARCH_COLUMNS.map(() => like));
+	} else {
+		// Each branch matches an index exactly: bookmarks_home / bookmarks_fav.
+		where = q.view === 'favourites' ? 'favourited = 1' : `archived = ${q.view === 'archive' ? 1 : 0}`;
+	}
 	const { results } = await db
 		.prepare(
 			`SELECT ${COLUMNS} FROM bookmarks WHERE ${where} AND (created_at, id) < (?, ?)
 			 ORDER BY created_at DESC, id DESC LIMIT ?`,
 		)
-		.bind(at, id, q.limit + 1)
+		.bind(...params, at, id, q.limit + 1)
 		.all<BookmarkRow>();
 	const page = results.slice(0, q.limit);
 	return {

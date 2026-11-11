@@ -36,8 +36,12 @@ export const api = {
 	me: () => request<{ ok: true }>('/me'),
 	login: (secret: string) => request<void>('/auth/login', json('POST', { secret })),
 	logout: () => request<void>('/auth/logout', { method: 'POST' }),
-	list: (view: View, cursor?: string) =>
-		request<BookmarkPage>(`/bookmarks?view=${view}&limit=30${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`),
+	list: (view: View, cursor?: string, q?: string) => {
+		const params = new URLSearchParams({ view, limit: '30' });
+		if (cursor) params.set('cursor', cursor);
+		if (q) params.set('q', q);
+		return request<BookmarkPage>(`/bookmarks?${params}`);
+	},
 	get: (id: string) => request<Bookmark>(`/bookmarks/${id}`),
 	create: (input: CreateBookmark) => request<{ bookmark: Bookmark; alreadyExists: boolean }>('/bookmarks', json('POST', input)),
 	patch: (id: string, patch: PatchBookmark) => request<Bookmark>(`/bookmarks/${id}`, json('PATCH', patch)),

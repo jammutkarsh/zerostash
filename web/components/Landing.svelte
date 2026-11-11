@@ -33,6 +33,21 @@
 		},
 	];
 
+	const mock = [
+		[
+			{ title: 'New item', meta: 'Paste a link or write a note…', image: '' },
+			{ title: 'The Part of PostgreSQL We Hate the Most', meta: 'cs.cmu.edu • 2 hours ago', image: 'bg-gradient-to-br from-sky-300 to-indigo-400' },
+		],
+		[
+			{ title: 'Cloudflare D1 docs', meta: 'developers.cloudflare.com • yesterday', image: 'bg-gradient-to-br from-orange-300 to-amber-500' },
+			{ title: 'Ideas: RSS poller', meta: 'note • 3 days ago', image: '' },
+		],
+		[
+			{ title: 'Svelte blog', meta: 'svelte.dev • 5 minutes ago', image: 'bg-gradient-to-br from-rose-300 to-orange-400' },
+			{ title: 'workers-sdk on GitHub', meta: 'github.com • last week', image: 'bg-gradient-to-br from-zinc-300 to-zinc-500' },
+		],
+	];
+
 	const steps = [
 		{ title: 'Deploy', body: 'Click “Deploy to Cloudflare”. It copies the repo to your GitHub and creates the Worker and database.' },
 		{ title: 'Set your secret', body: 'Paste a long random string as ZEROSTASH_SECRET. That is your login.' },
@@ -58,20 +73,64 @@
 	</header>
 
 	<main>
-		<section class="mx-auto max-w-6xl px-5 pt-14 pb-20">
-			<p class="mb-4 inline-block rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground">
-				Open source · MIT · Runs on Cloudflare's free tier
-			</p>
-			<h1 class="max-w-3xl text-4xl leading-[1.1] font-bold tracking-tight md:text-6xl">
-				Your bookmarks, on your own Cloudflare. For <span class="text-accent">₹0</span>.
-			</h1>
-			<p class="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-				Zerostash is a Karakeep-style bookmark manager that runs entirely on Cloudflare's free tier: a Worker, a D1 database and a
-				browser extension. No VPS, no Docker, no monthly bill.
-			</p>
-			<div class="mt-8 flex flex-wrap items-center gap-3">
-				<a href={DEPLOY}><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" class="h-10" /></a>
-				<a href={REPO} class="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-muted">View on GitHub</a>
+		<section class="mx-auto grid max-w-6xl items-center gap-12 px-5 pt-14 pb-20 lg:grid-cols-[1fr_1.05fr]">
+			<div>
+				<p class="mb-4 inline-block rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground">
+					Open source · MIT · Runs on Cloudflare's free tier
+				</p>
+				<h1 class="text-4xl leading-[1.1] font-bold tracking-tight md:text-6xl">
+					Your bookmarks, on your own Cloudflare. For <span class="text-accent">₹0</span>.
+				</h1>
+				<p class="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+					Zerostash is a Karakeep-style bookmark manager that runs entirely on Cloudflare's free tier: a Worker, a D1 database and a
+					browser extension. No VPS, no Docker, no monthly bill.
+				</p>
+				<div class="mt-8 flex flex-wrap items-center gap-3">
+					<a href={DEPLOY}><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" class="h-10" /></a>
+					<a href={REPO} class="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-muted">View on GitHub</a>
+				</div>
+			</div>
+
+			<!-- Product mock-up: pure CSS, no screenshots to keep in sync. -->
+			<div aria-hidden="true" class="relative">
+				<div class="overflow-hidden rounded-xl border bg-background shadow-2xl">
+					<div class="flex items-center gap-1.5 border-b bg-sidebar px-3 py-2">
+						<span class="size-2.5 rounded-full bg-red-400/80"></span><span class="size-2.5 rounded-full bg-amber-400/80"></span><span class="size-2.5 rounded-full bg-green-400/80"></span>
+						<span class="ml-3 flex-1 truncate rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">zerostash.you.workers.dev/dashboard</span>
+					</div>
+					<div class="flex">
+						<div class="hidden w-28 shrink-0 space-y-1.5 border-r bg-sidebar p-3 text-[10px] sm:block">
+							<p class="mb-3 font-bold">zerostash</p>
+							<p class="rounded bg-muted px-1.5 py-0.5 font-medium">Home</p>
+							<p class="px-1.5 text-muted-foreground">Archive</p>
+							<p class="px-1.5 pt-2 font-semibold text-muted-foreground">Lists</p>
+							<p class="px-1.5 text-muted-foreground">⭐ Favourites</p>
+						</div>
+						<div class="flex-1 p-3">
+							<div class="mb-3 rounded border bg-card px-2 py-1 text-[10px] text-muted-foreground">Search</div>
+							<div class="grid grid-cols-3 gap-2">
+								{#each mock as column, c (c)}
+									<div class="space-y-2">
+										{#each column as card (card.title)}
+											<div class="overflow-hidden rounded-md border bg-card shadow-sm">
+												{#if card.image}<div class="h-14 {card.image}"></div>{/if}
+												<div class="space-y-1 p-2">
+													<p class="text-[10px] leading-tight font-semibold">{card.title}</p>
+													<p class="text-[9px] text-muted-foreground">{card.meta}</p>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/each}
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="absolute -right-3 -bottom-6 w-44 rounded-lg border bg-card p-3 text-[11px] shadow-xl sm:-right-6">
+					<p class="mb-1 flex items-center gap-1.5 font-semibold"><img src="/favicon.svg" alt="" class="size-4" />Zerostash</p>
+					<p class="font-medium text-green-600 dark:text-green-400">Saved ✓</p>
+					<p class="text-muted-foreground">⌘⇧E from any page</p>
+				</div>
 			</div>
 		</section>
 

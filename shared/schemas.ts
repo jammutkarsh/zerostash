@@ -70,6 +70,8 @@ export const ListQuery = z.object({
 	cursor: z.string().max(200).optional(),
 	limit: z.coerce.number().int().min(1).max(LIMITS.pageSize).default(30),
 	view: z.enum(['home', 'archive', 'favourites']).default('home'),
+	// Free-text search across all bookmarks (any view). ponytail: LIKE scan; FTS5 later.
+	q: z.string().trim().max(200).optional(),
 });
 
 export const Bookmark = z.object({
