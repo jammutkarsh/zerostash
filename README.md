@@ -24,7 +24,7 @@ Status: early. Tags, lists, AI summaries/tagging, search, import/export, RSS and
 
 1. Click **Deploy to Cloudflare** above. Cloudflare copies this repo to your GitHub, creates the D1 database and deploys.
 2. When asked for `ZEROSTASH_SECRET`, paste a long random string (`openssl rand -hex 32`). It's your login.
-3. Open your Worker's URL and sign in with that secret.
+3. Open `https://<your-worker>/login` and sign in with that secret. The root URL shows the marketing page until this browser has signed in; the app lives at `/dashboard`.
 
 From the command line instead:
 

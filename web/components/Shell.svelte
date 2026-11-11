@@ -7,14 +7,13 @@
 	import Sun from '@lucide/svelte/icons/sun';
 	import { api, type View } from '../lib/api';
 	import { navigate, route } from '../lib/router.svelte';
+	import { setSessionHint } from '../lib/session';
 	import BookmarkGrid from './BookmarkGrid.svelte';
 
-	let { onLogout }: { onLogout: () => void } = $props();
-
 	const nav: { path: string; view: View; label: string; icon: typeof House }[] = [
-		{ path: '/', view: 'home', label: 'Home', icon: House },
-		{ path: '/favourites', view: 'favourites', label: 'Favourites', icon: Star },
-		{ path: '/archive', view: 'archive', label: 'Archive', icon: Archive },
+		{ path: '/dashboard', view: 'home', label: 'Home', icon: House },
+		{ path: '/dashboard/favourites', view: 'favourites', label: 'Favourites', icon: Star },
+		{ path: '/dashboard/archive', view: 'archive', label: 'Archive', icon: Archive },
 	];
 	const current = $derived(nav.find((n) => n.path === route.path) ?? nav[0]);
 	let dark = $state(document.documentElement.classList.contains('dark'));
@@ -29,7 +28,8 @@
 
 	async function logout() {
 		await api.logout();
-		onLogout();
+		setSessionHint(false);
+		navigate('/');
 	}
 </script>
 

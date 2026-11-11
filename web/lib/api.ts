@@ -1,4 +1,6 @@
 import type { Bookmark, BookmarkPage, CreateBookmark, PatchBookmark } from '../../shared/schemas';
+import { redirect } from './router.svelte';
+import { setSessionHint } from './session';
 
 export class ApiError extends Error {
 	constructor(
@@ -17,6 +19,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 	});
 	if (res.status === 204) return undefined as T;
 	const body = await res.json().catch(() => ({}));
+	if (res.status === 401 && path !== '/auth/login') {
+		// Session expired or the secret was rotated: back to sign-in.
+		setSessionHint(false);
+		redirect('/login');
+	}
 	if (!res.ok) throw new ApiError(res.status, body.error ?? 'error', body.message ?? `Request failed (${res.status})`);
 	return body as T;
 }

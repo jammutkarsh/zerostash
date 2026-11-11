@@ -1,28 +1,34 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import Dashboard from './components/Dashboard.svelte';
+	import Landing from './components/Landing.svelte';
 	import Login from './components/Login.svelte';
-	import Setup from './components/Setup.svelte';
-	import Shell from './components/Shell.svelte';
-	import { api, ApiError } from './lib/api';
+	import { redirect, route } from './lib/router.svelte';
+	import { hasSessionHint } from './lib/session';
 
-	let status = $state<'loading' | 'login' | 'setup' | 'ready'>('loading');
+	// `/` is the marketing page unless this browser has signed in; `/login` takes the
+	// secret; everything under `/dashboard` is the app.
+	const page = $derived(
+		route.path === '/'
+			? hasSessionHint()
+				? 'to-dashboard'
+				: 'landing'
+			: route.path === '/login'
+				? 'login'
+				: route.path === '/dashboard' || route.path.startsWith('/dashboard/')
+					? 'dashboard'
+					: 'unknown',
+	);
 
-	onMount(async () => {
-		try {
-			await api.me();
-			status = 'ready';
-		} catch (e) {
-			status = e instanceof ApiError && e.code === 'setup_required' ? 'setup' : 'login';
-		}
+	$effect(() => {
+		if (page === 'to-dashboard') redirect('/dashboard');
+		else if (page === 'unknown') redirect('/');
 	});
 </script>
 
-{#if status === 'loading'}
-	<div class="grid min-h-dvh place-items-center text-sm text-muted-foreground">Loading…</div>
-{:else if status === 'setup'}
-	<Setup />
-{:else if status === 'login'}
-	<Login onLogin={() => (status = 'ready')} />
-{:else}
-	<Shell onLogout={() => (status = 'login')} />
+{#if page === 'landing'}
+	<Landing />
+{:else if page === 'login'}
+	<Login />
+{:else if page === 'dashboard'}
+	<Dashboard />
 {/if}

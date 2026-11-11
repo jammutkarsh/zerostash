@@ -58,7 +58,7 @@
 		<img src="/icons/icon32.png" alt="" class="size-5" />
 		<span class="font-semibold">Zerostash</span>
 		{#if settings?.serverUrl}
-			<a href={settings.serverUrl} target="_blank" class="ml-auto text-xs text-muted-foreground hover:underline">Open app ↗</a>
+			<a href={`${settings.serverUrl}/dashboard`} target="_blank" class="ml-auto text-xs text-muted-foreground hover:underline">Open app ↗</a>
 		{/if}
 	</header>
 
