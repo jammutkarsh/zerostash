@@ -34,7 +34,7 @@
 	const inLists = $derived(bookmark.listIds.length > 0);
 </script>
 
-<Menu label="Add to list" buttonClass="{buttonClass} {inLists ? 'text-accent' : 'text-muted-foreground hover:text-foreground'}" panelClass="right-0 bottom-full mb-1">
+<Menu label="Add to list" buttonClass="{buttonClass} {inLists ? 'text-accent' : 'text-muted-foreground hover:text-foreground'}" panelClass="right-0 top-full mt-1" flipClass="right-0 bottom-full mb-1">
 	{#snippet trigger()}<ListPlus class="size-4" />{/snippet}
 	{#snippet children(close)}
 		<p class="px-2.5 pt-1 pb-1.5 text-xs font-semibold text-muted-foreground">Add to list</p>
