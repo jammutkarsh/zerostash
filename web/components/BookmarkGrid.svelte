@@ -3,6 +3,7 @@
 	import type { Bookmark } from '../../shared/schemas';
 	import type { View } from '../lib/api';
 	import { deltaKept, ensureFeed, lists, loadMore, refresh, remove, toggle } from '../lib/store.svelte';
+	import { undoLast } from '../lib/toast.svelte';
 	import BookmarkCard from './BookmarkCard.svelte';
 	import QuickAdd from './QuickAdd.svelte';
 
@@ -67,6 +68,12 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
+		// ⌘Z / Ctrl+Z undoes the last delete or archive; inside a text field it stays the field's own undo.
+		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {
+			if (e.target instanceof HTMLElement && e.target.closest('input, textarea, [contenteditable]')) return;
+			if (undoLast()) e.preventDefault();
+			return;
+		}
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
 		if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable], [role="dialog"]')) return;
 		const arrows = focused >= first; // arrows only steer once something is selected; otherwise they scroll

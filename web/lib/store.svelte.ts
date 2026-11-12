@@ -9,7 +9,7 @@
 //   the scenes, rolling back with a toast if the server refuses.
 import type { Bookmark, CreateList, List, PatchList } from '../../shared/schemas';
 import { api, type View } from './api';
-import { toast } from './toast.svelte';
+import { toast, undoToast } from './toast.svelte';
 
 export interface Feed {
 	view: View;
@@ -218,17 +218,29 @@ export function findBookmark(id: string): Bookmark | undefined {
 	}
 }
 
-/** Optimistic favourite/archive toggle. */
+const short = (b: Bookmark) => (b.title || b.url || 'note').slice(0, 40);
+
+/** Optimistic favourite/archive toggle. Archiving moves the card out of view, so it gets an Undo toast. */
 export async function toggle(id: string, field: 'favourited' | 'archived') {
 	const before = findBookmark(id);
 	if (!before) return;
-	const snapshot = $state.snapshot(before);
-	const value = !before[field];
-	upsert({ ...snapshot, [field]: value });
+	const snapshot = $state.snapshot(before) as Bookmark;
+	const value = !snapshot[field];
+	if (field === 'archived') {
+		// Undo works from the snapshot: once archived, the card may be in no cached view to find.
+		undoToast(value ? `Archived “${short(snapshot)}”.` : `Moved “${short(snapshot)}” back to Home.`, () =>
+			void setField({ ...snapshot, archived: value }, 'archived', !value),
+		);
+	}
+	await setField(snapshot, field, value);
+}
+
+async function setField(before: Bookmark, field: 'favourited' | 'archived', value: boolean) {
+	upsert({ ...before, [field]: value });
 	try {
-		upsert(await api.patch(id, { [field]: value }));
+		upsert(await api.patch(before.id, { [field]: value }));
 	} catch {
-		upsert(snapshot);
+		upsert(before);
 		toast(`Couldn't ${field === 'favourited' ? 'update favourite' : value ? 'archive' : 'unarchive'}. Undone.`);
 	}
 }
@@ -250,7 +262,7 @@ export function remove(id: string) {
 	bumpCounts(snapshot.listIds, -1);
 	persist();
 	pendingDeletes.set(id, { snapshot, timer: setTimeout(() => void commitDelete(id), UNDO_MS), sent: false });
-	toast(`Deleted “${(snapshot.title || snapshot.url || 'note').slice(0, 40)}”.`, UNDO_MS, { label: 'Undo', run: () => undoDelete(id) });
+	undoToast(`Deleted “${short(snapshot)}”.`, () => undoDelete(id), UNDO_MS);
 }
 
 function undoDelete(id: string) {

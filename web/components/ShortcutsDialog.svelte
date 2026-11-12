@@ -21,6 +21,7 @@
 				[['a'], 'Archive'],
 				[['c'], 'Copy link'],
 				[['#', 'Delete'], 'Delete'],
+				[[`${mod} Z`], 'Undo delete or archive'],
 				[['n'], 'New item'],
 			],
 		},
