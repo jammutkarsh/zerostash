@@ -294,9 +294,15 @@
 		<button onclick={logout} title="Sign out" class="{item} {mini ? 'justify-center px-0' : ''} {idle}">
 			<LogOut class="size-4 shrink-0" />{#if !mini}Sign out{/if}
 		</button>
-		<p class="mt-2 text-xs text-muted-foreground {mini ? 'text-center' : 'px-2.5'}" title="Zerostash version">
+		<a
+			href={REPO}
+			target="_blank"
+			rel="noopener"
+			title="Zerostash on GitHub"
+			class="mt-2 block rounded-md text-xs text-muted-foreground hover:text-foreground hover:underline {mini ? 'text-center' : 'px-2.5'}"
+		>
 			{#if !mini}<span>Zerostash</span>{/if} <b class="font-bold text-foreground">v{pkg.version}</b>
-		</p>
+		</a>
 	</div>
 {/snippet}
 
