@@ -39,6 +39,9 @@
 		},
 	];
 
+	const shipped = features.filter((f) => !f.soon);
+	const planned = features.filter((f) => f.soon);
+
 	const mock = [
 		[
 			{ title: 'New item', meta: 'Paste a link or write a note…', image: '' },
@@ -162,13 +165,20 @@
 
 		<section id="features" class="mx-auto max-w-6xl px-5 py-20">
 			<h2 class="text-3xl font-semibold">What you get</h2>
-			<div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-				{#each features as f (f.title)}
-					<article class="rounded-xl border bg-card p-5">
-						<h3 class="flex items-center gap-2 font-semibold">
-							{f.title}
-							{#if f.soon}<span class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Coming soon</span>{/if}
-						</h3>
+			<!-- Shipped features fill full rows (2 wide + 3 on desktop); planned ones sit apart so they don't read as shipped. -->
+			<div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+				{#each shipped as f, i (f.title)}
+					<article class="rounded-xl border bg-card p-5 {i < 2 ? 'lg:col-span-3' : 'lg:col-span-2'} {i === shipped.length - 1 ? 'sm:col-span-2 lg:col-span-2' : ''}">
+						<h3 class="font-semibold">{f.title}</h3>
+						<p class="mt-2 text-sm leading-relaxed text-muted-foreground">{f.body}</p>
+					</article>
+				{/each}
+			</div>
+			<h3 class="mt-12 text-sm font-semibold tracking-wide text-muted-foreground uppercase">Coming next</h3>
+			<div class="mt-4 grid gap-4 sm:grid-cols-2">
+				{#each planned as f (f.title)}
+					<article class="rounded-xl border border-dashed p-5">
+						<h4 class="font-semibold">{f.title}</h4>
 						<p class="mt-2 text-sm leading-relaxed text-muted-foreground">{f.body}</p>
 					</article>
 				{/each}
@@ -190,13 +200,17 @@
 						</li>
 					{/each}
 				</ol>
+				<div class="mt-8 flex flex-wrap items-center gap-3">
+					<a href="{REPO}/fork" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">Fork on GitHub</a>
+					<a href="{REPO}#deploy" class="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Setup guide</a>
+				</div>
 			</div>
 		</section>
 	</main>
 
 	<footer class="mx-auto flex max-w-6xl flex-wrap gap-x-6 gap-y-2 px-5 py-8 text-sm text-muted-foreground">
 		<span>MIT licensed</span>
-		<a href={REPO} class="hover:text-foreground">GitHub</a>
+		<a href={REPO} class="underline hover:text-foreground">GitHub</a>
 		<span>Inspired by <a href="https://karakeep.app" class="underline hover:text-foreground">Karakeep</a></span>
 		<span>Made by <a href="https://utkarshchourasia.in" class="underline hover:text-foreground">Utkarsh Chourasia</a></span>
 	</footer>
