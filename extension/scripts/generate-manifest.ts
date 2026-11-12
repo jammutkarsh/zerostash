@@ -14,10 +14,10 @@ const icons = { '16': 'icons/icon16.png', '32': 'icons/icon32.png', '48': 'icons
 
 const base = {
 	manifest_version: 3,
-	name: 'Zerostash – bookmarks on your Cloudflare',
+	name: 'Zerostash – free bookmarks in your own Cloudflare',
 	short_name: 'Zerostash',
 	version,
-	description: 'Save pages to your own Zerostash bookmark server on Cloudflare. One click saves the page; right-click saves links and text.',
+	description: 'Free bookmarks in your own Cloudflare account. Save any page in one keystroke; right-click saves links and text.',
 	// Only `activeTab` touches pages by default. `<all_urls>` is optional: requested at
 	// onboarding to fetch link previews for bookmarks saved outside an open tab.
 	permissions: ['storage', 'activeTab', 'scripting', 'contextMenus', 'alarms'],

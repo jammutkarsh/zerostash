@@ -11,4 +11,6 @@ Cloudflare rebuilds your fork, applies any database changes, then deploys. Your 
 
 ## Update the extension
 
-Download the new extension from the [latest release](https://github.com/jammutkarsh/zerostash/releases/latest) and load it the same way as before ([step 5 of the deploy guide](./workers.md#5-install-the-browser-extension)). For Chrome, unzip the new version into the same folder as before, then click the reload button on `chrome://extensions`. Keeping the same folder keeps your settings.
+Chrome updates the extension from the Chrome Web Store on its own.
+
+On Firefox, download `zerostash-firefox.xpi` from the [latest release](https://github.com/jammutkarsh/zerostash/releases/latest) and load it the same way as before ([step 5 of the deploy guide](./workers.md#5-install-the-browser-extension)).
