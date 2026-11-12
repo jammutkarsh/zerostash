@@ -5,32 +5,33 @@
 	import { navigate } from '../lib/router.svelte';
 
 	const REPO = 'https://github.com/jammutkarsh/zerostash';
+	const GUIDE = `${REPO}/blob/main/docs/deployment/workers.md`;
 
 	const features: { title: string; body: string; soon?: boolean }[] = [
 		{
-			title: 'Save in one click',
-			body: 'The Chrome and Firefox extension saves the current page with its title, description and image. ⌘⇧E on Mac, Alt+Shift+E elsewhere, or right-click any link.',
+			title: 'Your links stay yours',
+			body: "Everything lives in your own Cloudflare account. No sign-up, no tracking, no one else's servers.",
 		},
 		{
-			title: 'Previews that actually load',
-			body: 'Your browser reads link previews, so redirects, short links and sites that block servers just work. The server only fills in what the extension missed.',
+			title: 'Save in one keystroke',
+			body: 'The Chrome and Firefox extension saves the page you are on. ⌘⇧E on Mac, Alt+Shift+E elsewhere, or right-click any link.',
 		},
 		{
-			title: 'Yours, and only yours',
-			body: 'Everything lives in a D1 database in your own Cloudflare account. One secret signs you in. No sign-ups, no tracking, and nothing leaves your account unless you turn on an AI provider.',
+			title: 'Every save looks like the page',
+			body: "Metadata comes in automatically once the browser extension is set up, even for short links, redirects and pages you're logged into.",
 		},
 		{
-			title: 'Built to stay free',
-			body: "The app is static files, so browsing costs nothing. Every query uses an index, so Cloudflare's free daily allowance goes a very long way.",
+			title: 'Find it again',
+			body: 'Fast search across everything you saved, nested lists, and smart lists that fill themselves from a search.',
+		},
+		{
+			title: 'Nothing to pay, nothing to cancel',
+			body: "Zerostash is built to fit inside Cloudflare's free plan, so there's no monthly bill.",
 		},
 		{
 			title: 'AI summaries and tags',
-			body: 'Bring your own model: Claude, OpenAI, Gemini, OpenRouter or any OpenAI-compatible API such as DeepSeek. Tags reuse the ones you already have.',
+			body: 'Bring your own model: Claude, OpenAI, Gemini, OpenRouter or any OpenAI-compatible API. Tags reuse the ones you already have.',
 			soon: true,
-		},
-		{
-			title: 'Lists and search',
-			body: 'Nested lists with emoji, smart lists that fill themselves from a search, drag-and-drop, and instant search across everything you saved.',
 		},
 		{
 			title: 'Imports, RSS and rules',
@@ -88,15 +89,14 @@
 					Open source · MIT · Runs on Cloudflare's free tier
 				</p>
 				<h1 class="text-4xl leading-[1.1] font-bold tracking-tight md:text-6xl">
-					Your bookmarks, on your own Cloudflare for <span class="text-accent">₹0</span>.
+					Free bookmarks in <span class="text-accent">your own</span> Cloudflare account.
 				</h1>
 				<p class="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
-					Zerostash is a Karakeep-style bookmark manager that runs entirely on Cloudflare's free tier: a Worker, a D1 database and a
-					browser extension. No VPS, no Docker, no monthly bill.
+					No subscription, no server to rent, and your links never sit on anyone else's servers.
 				</p>
 				<div class="mt-8 flex flex-wrap items-center gap-3">
 					<a href="{REPO}/fork" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">Fork on GitHub</a>
-					<a href="{REPO}#deploy" class="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Setup guide</a>
+					<a href={GUIDE} class="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Setup guide</a>
 				</div>
 			</div>
 
@@ -144,22 +144,13 @@
 		</section>
 
 		<section class="border-y bg-card">
-			<div class="mx-auto grid max-w-6xl gap-8 px-5 py-12 md:grid-cols-2">
-				<div>
-					<h2 class="text-2xl font-semibold">Why it exists</h2>
-					<p class="mt-3 leading-relaxed text-muted-foreground">
-						Running Karakeep meant renting a server for about ₹600 a month, around the clock, for something I open a few times a
-						day. Zerostash keeps the parts I actually use and fits them inside Cloudflare's free allowance.
-					</p>
-				</div>
-				<dl class="grid grid-cols-2 gap-4 text-sm">
-					{#each [['100,000', 'requests a day'], ['5 million', 'database reads a day'], ['100,000', 'database writes a day'], ['5 GB', 'of storage']] as [n, label] (label)}
-						<div class="rounded-xl border bg-background p-4">
-							<dt class="text-2xl font-bold">{n}</dt>
-							<dd class="text-muted-foreground">{label}, free</dd>
-						</div>
-					{/each}
-				</dl>
+			<div class="mx-auto max-w-3xl px-5 py-12">
+				<h2 class="text-2xl font-semibold">Why it exists</h2>
+				<p class="mt-3 leading-relaxed text-muted-foreground">
+					Running Karakeep meant renting a server for about ₹600 a month, around the clock, for something I open a few times a day.
+					Zerostash keeps the parts I actually use and fits them inside Cloudflare's free plan, which allows far more than one person
+					will ever save or open in a day.
+				</p>
 			</div>
 		</section>
 
@@ -202,7 +193,7 @@
 				</ol>
 				<div class="mt-8 flex flex-wrap items-center gap-3">
 					<a href="{REPO}/fork" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">Fork on GitHub</a>
-					<a href="{REPO}#deploy" class="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Setup guide</a>
+					<a href={GUIDE} class="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Setup guide</a>
 				</div>
 			</div>
 		</section>

@@ -6,7 +6,7 @@
 import { $ } from 'bun';
 
 if (process.env.WORKERS_CI !== '1') {
-	console.error('Deploys run on Cloudflare Workers Builds only: push to main. See README → Deploy.');
+	console.error('Deploys run on Cloudflare Workers Builds only: push to main. See docs/deployment/workers.md.');
 	process.exit(1);
 }
 
