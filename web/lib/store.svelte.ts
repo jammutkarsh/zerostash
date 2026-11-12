@@ -1,10 +1,12 @@
 // Client cache so pages feel instant:
-// - every view renders from cache first (persisted to localStorage across reloads),
-//   then refreshes from the API in the background;
-// - Home/Favourites/Archive and the lists are prefetched once the dashboard opens;
+// - every view renders from cache first (persisted to localStorage across reloads);
+// - delta sync keeps it current: `pull()` asks GET /changes for what changed since the last
+//   sync and folds it into every cached view, on dashboard open, on tab focus and every two
+//   minutes. A quiet library costs ~0 rows read per poll instead of a page per view;
+// - searches and smart lists match on text the delta can't evaluate, so those re-fetch
+//   their first page when shown;
 // - favourite/archive/delete/list changes update the screen immediately and sync behind
-//   the scenes, rolling back with a toast if the server refuses;
-// - feeds re-sync when the tab regains focus and every two minutes while visible.
+//   the scenes, rolling back with a toast if the server refuses.
 import type { Bookmark, CreateList, List, PatchList } from '../../shared/schemas';
 import { api, type View } from './api';
 import { toast } from './toast.svelte';
@@ -23,11 +25,14 @@ export interface Feed {
 
 const STORAGE_KEY = 'zs_cache_v2';
 const LISTS_KEY = 'zs_lists_v2'; // v2: smart lists have `terms` instead of `query`
+const SINCE_KEY = 'zs_since'; // GET /changes cursor; saved with the cache it describes
 const PERSIST_LIMIT = 60; // per view; enough for an instant first screen
 const VIEWS: View[] = ['home', 'favourites', 'archive'];
 
 export const feeds = $state<Record<string, Feed>>(restore());
 export const lists = $state<{ items: List[] }>({ items: restoreLists() });
+
+let since = readSince();
 
 export const feedKey = (view: View, q = '', listId = '') => (listId ? `list:${listId}` : q ? `search:${q}` : view);
 
@@ -47,6 +52,15 @@ function restore(): Record<string, Feed> {
 		return out;
 	} catch {
 		return {};
+	}
+}
+
+function readSince(): number | undefined {
+	try {
+		const n = Number(localStorage.getItem(SINCE_KEY));
+		return n > 0 ? n : undefined;
+	} catch {
+		return undefined;
 	}
 }
 
@@ -77,6 +91,7 @@ function persist() {
 		try {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
 			localStorage.setItem(LISTS_KEY, JSON.stringify(lists.items));
+			if (since) localStorage.setItem(SINCE_KEY, String(since));
 		} catch {}
 	}, 300);
 }
@@ -85,9 +100,11 @@ function persist() {
 export function clearCache() {
 	for (const key of Object.keys(feeds)) delete feeds[key];
 	lists.items = [];
+	since = undefined;
 	try {
 		localStorage.removeItem(STORAGE_KEY);
 		localStorage.removeItem(LISTS_KEY);
+		localStorage.removeItem(SINCE_KEY);
 		localStorage.removeItem('zs_cache_v1'); // older cache formats
 		localStorage.removeItem('zs_lists_v1');
 	} catch {}
@@ -183,6 +200,13 @@ export function upsert(b: Bookmark) {
 	persist();
 }
 
+function drop(id: string) {
+	for (const feed of Object.values(feeds)) {
+		const i = feed.items.findIndex((x) => x.id === id);
+		if (i !== -1) feed.items.splice(i, 1);
+	}
+}
+
 export function findBookmark(id: string): Bookmark | undefined {
 	for (const feed of Object.values(feeds)) {
 		const b = feed.items.find((x) => x.id === id);
@@ -210,10 +234,7 @@ export async function remove(id: string) {
 	const before = findBookmark(id);
 	if (!before) return;
 	const snapshot = $state.snapshot(before);
-	for (const feed of Object.values(feeds)) {
-		const i = feed.items.findIndex((x) => x.id === id);
-		if (i !== -1) feed.items.splice(i, 1);
-	}
+	drop(id);
 	bumpCounts(snapshot.listIds, -1);
 	persist();
 	try {
@@ -229,15 +250,6 @@ export async function remove(id: string) {
 
 function bumpCounts(listIds: string[], delta: number) {
 	for (const l of lists.items) if (listIds.includes(l.id)) l.itemCount = Math.max(0, l.itemCount + delta);
-}
-
-export async function loadLists() {
-	try {
-		lists.items = (await api.lists()).items;
-		persist();
-	} catch {
-		// keep the cached lists
-	}
 }
 
 export async function createList(input: CreateList): Promise<List> {
@@ -281,22 +293,63 @@ export async function setInList(bookmarkId: string, listId: string, member: bool
 	}
 }
 
-// ---- background sync ----
+// ---- delta sync ----
+
+/** Base views and manual lists stay current through `pull()`; searches and smart lists don't. */
+export function deltaKept(feed: Feed): boolean {
+	return !feed.q && lists.items.find((l) => l.id === feed.listId)?.kind !== 'smart';
+}
+
+/** First sync, or too much changed: replace every cached view with its first page. */
+async function reload() {
+	for (const v of VIEWS) ensureFeed(v);
+	await Promise.all(
+		Object.values(feeds).map(async (feed) => {
+			if (feed.loading) return;
+			const page = await fetchPage(feed);
+			Object.assign(feed, { items: page.items, cursor: page.nextCursor, done: !page.nextCursor, fetchedAt: Date.now(), error: '' });
+		}),
+	);
+}
+
+let pulling: Promise<void> | undefined;
+/** Fetch what changed since the last sync and fold it into every cached view. */
+export function pull(): Promise<void> {
+	pulling ??= (async () => {
+		try {
+			const res = await api.changes(since);
+			lists.items = res.lists;
+			if (res.reset) await reload();
+			for (const b of res.items) {
+				const mine = findBookmark(b.id);
+				// The cursor overlaps the last minute, and a PATCH reply may already be newer.
+				if (!mine || mine.updatedAt < b.updatedAt) upsert(b);
+			}
+			res.deleted.forEach(drop);
+			// Only advance once applied: a failed reload retries the reset next time.
+			since = res.cursor;
+			persist();
+		} catch {
+			// Best-effort; the cached views stay usable.
+		} finally {
+			pulling = undefined;
+		}
+	})();
+	return pulling;
+}
 
 let syncing = false;
-/** Prefetch the main views and lists, then keep the current one fresh. Call once per dashboard visit. */
+/** Sync once, then keep the cache current. Call once per dashboard visit. */
 export function startSync(current: () => Feed) {
 	if (syncing) return () => {};
 	syncing = true;
 	const idle = (fn: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(fn) : setTimeout(fn, 200));
-	idle(() => {
-		void loadLists();
-		VIEWS.forEach((v) => void refresh(ensureFeed(v)));
-	});
+	idle(() => void pull());
 	const sync = () => {
 		if (document.visibilityState !== 'visible') return;
-		void refresh(current());
-		void loadLists();
+		void pull();
+		const feed = current();
+		if (!deltaKept(feed)) void refresh(feed);
 	};
 	const timer = setInterval(sync, 2 * 60_000);
 	document.addEventListener('visibilitychange', sync);

@@ -147,6 +147,20 @@ export type PatchList = z.infer<typeof PatchList>;
 export const BookmarkPage = z.object({ items: z.array(Bookmark), nextCursor: z.string().nullable() });
 export type BookmarkPage = z.infer<typeof BookmarkPage>;
 
+export const ChangesQuery = z.object({
+	// `cursor` from the previous call. Missing = first sync.
+	since: z.coerce.number().int().min(0).optional(),
+});
+
+export const Changes = z.object({
+	items: z.array(Bookmark), // created or changed since `since`
+	deleted: z.array(z.string()), // ids deleted since `since`
+	lists: z.array(List), // all lists (the table is tiny)
+	cursor: z.number(), // pass as `since` next time
+	reset: z.boolean(), // first sync, `since` too old, or too much changed: reload the views instead
+});
+export type Changes = z.infer<typeof Changes>;
+
 export const Health = z.object({
 	name: z.literal('zerostash'),
 	version: z.string(),

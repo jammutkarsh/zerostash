@@ -1,7 +1,7 @@
 // Bookmark persistence. All list queries are index-backed and cursor-paginated
 // (no OFFSET, no COUNT) to stay inside the Free plan's 5M rows read/day.
 import type { OgData, OgSource } from '../shared/og';
-import type { Bookmark, BookmarkPage, CreateBookmark, PatchBookmark } from '../shared/schemas';
+import type { Bookmark, BookmarkPage, Changes, CreateBookmark, PatchBookmark } from '../shared/schemas';
 
 interface BookmarkRow {
 	id: string;
@@ -191,13 +191,43 @@ export async function patchBookmark(db: D1Database, id: string, patch: PatchBook
 	return getBookmark(db, id);
 }
 
-export async function deleteBookmark(db: D1Database, id: string): Promise<boolean> {
+export async function deleteBookmark(db: D1Database, id: string, now = Date.now()): Promise<boolean> {
 	// Keep list counts right: decrement before the cascade removes the memberships.
-	const [, res] = await db.batch([
+	// The tombstone tells other devices (GET /changes) to drop it.
+	const [, , res] = await db.batch([
 		db.prepare('UPDATE lists SET item_count = item_count - 1 WHERE id IN (SELECT list_id FROM bookmark_lists WHERE bookmark_id = ?)').bind(id),
+		db.prepare('INSERT INTO tombstones (deleted_at, id) SELECT ?, id FROM bookmarks WHERE id = ?').bind(now, id),
 		db.prepare('DELETE FROM bookmarks WHERE id = ?').bind(id),
 	]);
 	return res.meta.changes > 0;
+}
+
+// ---- delta sync ----
+// Every write that changes what a client shows must bump updated_at (create, patch, OG,
+// list membership); deletes leave a tombstone.
+
+export const SYNC_LIMIT = 100; // more changes than this: the client reloads instead
+// The returned cursor trails "now" by a minute, so the next call re-sends that minute: covers
+// writes stamped just before this read but committed after it, and clock skew between Workers.
+export const SYNC_OVERLAP_MS = 60_000;
+export const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function changesSince(db: D1Database, since: number | undefined, now = Date.now()): Promise<Omit<Changes, 'lists'>> {
+	const cursor = now - SYNC_OVERLAP_MS;
+	const reset = { items: [], deleted: [], cursor, reset: true };
+	if (since === undefined || since < now - TOMBSTONE_TTL_MS) return reset;
+	// Both are index range scans: rows read = rows changed.
+	const [changed, gone] = await Promise.all([
+		db.prepare(`SELECT ${COLUMNS} FROM bookmarks b WHERE b.updated_at > ? ORDER BY b.updated_at LIMIT ?`).bind(since, SYNC_LIMIT + 1).all<BookmarkRow>(),
+		db.prepare('SELECT id FROM tombstones WHERE deleted_at > ? LIMIT ?').bind(since, SYNC_LIMIT + 1).all<{ id: string }>(),
+	]);
+	if (changed.results.length > SYNC_LIMIT || gone.results.length > SYNC_LIMIT) return reset;
+	return { items: changed.results.map(toBookmark), deleted: gone.results.map((r) => r.id), cursor, reset: false };
+}
+
+/** Clients that last synced before the TTL get `reset`, so older tombstones can go. */
+export async function purgeTombstones(db: D1Database, now = Date.now()): Promise<void> {
+	await db.prepare('DELETE FROM tombstones WHERE deleted_at < ?').bind(now - TOMBSTONE_TTL_MS).run();
 }
 
 /**

@@ -91,8 +91,10 @@ export async function patchList(db: D1Database, id: string, patch: PatchList): P
 }
 
 /** Deletes the list (not its bookmarks); child lists move up to the top level. */
-export async function deleteList(db: D1Database, id: string): Promise<boolean> {
-	const [, , res] = await db.batch([
+export async function deleteList(db: D1Database, id: string, now = Date.now()): Promise<boolean> {
+	const [, , , res] = await db.batch([
+		// Members' listIds change: bump them so other devices pick that up (GET /changes).
+		db.prepare('UPDATE bookmarks SET updated_at = ? WHERE id IN (SELECT bookmark_id FROM bookmark_lists WHERE list_id = ?)').bind(now, id),
 		db.prepare('UPDATE lists SET parent_id = NULL WHERE parent_id = ?').bind(id),
 		db.prepare('DELETE FROM bookmark_lists WHERE list_id = ?').bind(id),
 		db.prepare('DELETE FROM lists WHERE id = ?').bind(id),
@@ -107,21 +109,27 @@ async function existingList(db: D1Database, id: string): Promise<List> {
 	return list;
 }
 
-/** Idempotent. `changes()` makes the count move only when a row was really added/removed. */
-export async function addToList(db: D1Database, listId: string, bookmarkId: string): Promise<void> {
+/**
+ * Idempotent. `changes()` makes the count move only when a row was really added/removed, so it
+ * must directly follow the membership write. Bumping updated_at puts the bookmark's new
+ * listIds into GET /changes.
+ */
+export async function addToList(db: D1Database, listId: string, bookmarkId: string, now = Date.now()): Promise<void> {
 	await existingList(db, listId);
 	const exists = await db.prepare('SELECT 1 FROM bookmarks WHERE id = ?').bind(bookmarkId).first();
 	if (!exists) throw new ListError(404, 'Bookmark not found.');
 	await db.batch([
 		db.prepare('INSERT OR IGNORE INTO bookmark_lists (bookmark_id, list_id) VALUES (?, ?)').bind(bookmarkId, listId),
 		db.prepare('UPDATE lists SET item_count = item_count + changes() WHERE id = ?').bind(listId),
+		db.prepare('UPDATE bookmarks SET updated_at = ? WHERE id = ?').bind(now, bookmarkId),
 	]);
 }
 
-export async function removeFromList(db: D1Database, listId: string, bookmarkId: string): Promise<void> {
+export async function removeFromList(db: D1Database, listId: string, bookmarkId: string, now = Date.now()): Promise<void> {
 	await existingList(db, listId);
 	await db.batch([
 		db.prepare('DELETE FROM bookmark_lists WHERE bookmark_id = ? AND list_id = ?').bind(bookmarkId, listId),
 		db.prepare('UPDATE lists SET item_count = item_count - changes() WHERE id = ?').bind(listId),
+		db.prepare('UPDATE bookmarks SET updated_at = ? WHERE id = ?').bind(now, bookmarkId),
 	]);
 }

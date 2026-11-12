@@ -158,6 +158,31 @@ check(
 );
 for (const id of listsCreated) await call('DELETE', `/lists/${id}`);
 
+// Delta sync
+type Item = { id: string; listIds: string[]; favourited: boolean; updatedAt: number };
+const first = await call('GET', '/changes');
+check('changes without since → reset', first.json?.reset === true && Array.isArray(first.json.lists) && typeof first.json.cursor === 'number', first.json);
+check('changes with an ancient since → reset', (await call('GET', '/changes?since=1')).json?.reset === true);
+const t0 = Date.now() - 5000; // margin for clock skew between this machine and the server
+const synced = await create({ type: 'link', url: `https://example.com/sync-${run}`, source: 'api' });
+const sid = synced.json.bookmark.id;
+await call('PATCH', `/bookmarks/${sid}`, { favourited: true });
+const d1 = await call('GET', `/changes?since=${t0}`);
+const seen = d1.json?.items.find((b: Item) => b.id === sid);
+check('changes carry new and edited bookmarks', d1.json?.reset === false && seen?.favourited === true, d1.json);
+check('quiet since → nothing', (await call('GET', `/changes?since=${Date.now() + 60_000}`)).json?.items.length === 0);
+const syncList = await call('POST', '/lists', { name: `sync-${run}` });
+await call('PUT', `/lists/${syncList.json.id}/bookmarks/${sid}`);
+const d2 = await call('GET', `/changes?since=${seen?.updatedAt}`);
+const listed = d2.json?.items.find((b: Item) => b.id === sid);
+check('adding to a list is a change', listed?.listIds.includes(syncList.json.id), d2.json);
+await call('DELETE', `/lists/${syncList.json.id}`);
+const d3 = await call('GET', `/changes?since=${listed?.updatedAt}`);
+check('deleting a list is a change for its members', d3.json?.items.find((b: Item) => b.id === sid)?.listIds.length === 0, d3.json);
+await call('DELETE', `/bookmarks/${sid}`);
+const d4 = await call('GET', `/changes?since=${t0}`);
+check('deletes come back as tombstones', d4.json?.deleted.includes(sid) && !d4.json.items.some((b: Item) => b.id === sid), d4.json);
+
 for (const id of created) await call('DELETE', `/bookmarks/${id}`);
 check('delete → gone', (await call('GET', `/bookmarks/${a.json.bookmark.id}`)).status === 404);
 

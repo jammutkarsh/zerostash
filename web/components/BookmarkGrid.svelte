@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import type { Bookmark } from '../../shared/schemas';
 	import type { View } from '../lib/api';
-	import { ensureFeed, lists, loadMore, refresh, remove, toggle } from '../lib/store.svelte';
+	import { deltaKept, ensureFeed, lists, loadMore, refresh, remove, toggle } from '../lib/store.svelte';
 	import BookmarkCard from './BookmarkCard.svelte';
 	import QuickAdd from './QuickAdd.svelte';
 
@@ -46,8 +46,9 @@
 	}
 
 	onMount(() => {
-		// Cached data is already on screen; fetch only what's missing, refresh the rest quietly.
-		if (feed.items.length) void refresh(feed);
+		// Cached data is already on screen. Delta sync keeps the main views and manual lists
+		// current; searches and smart lists re-run their first page quietly.
+		if (feed.items.length && !deltaKept(feed)) void refresh(feed);
 		const io = new IntersectionObserver((e) => e[0].isIntersecting && more(), { rootMargin: '600px' });
 		io.observe(sentinel);
 		return () => io.disconnect();
