@@ -14,14 +14,24 @@ interface ListRow {
 	created_at: number;
 }
 
+/** Terms are stored as a JSON array in `query`; early smart lists stored one plain term. */
+export function parseTerms(query: string | null): string[] {
+	if (!query) return [];
+	try {
+		const parsed = JSON.parse(query);
+		if (Array.isArray(parsed)) return parsed.filter((t): t is string => typeof t === 'string' && t.length > 0);
+	} catch {}
+	return [query];
+}
+
 const toList = (r: ListRow): List => ({
 	id: r.id,
 	name: r.name,
 	icon: r.icon,
 	parentId: r.parent_id,
 	kind: r.kind,
-	query: r.query,
-	itemCount: r.kind === 'manual' ? r.item_count : 0,
+	terms: r.kind === 'smart' ? parseTerms(r.query) : [],
+	itemCount: r.item_count, // bookmarks added by hand (smart lists also show their term matches)
 	createdAt: r.created_at,
 });
 
@@ -55,12 +65,12 @@ async function assertParent(db: D1Database, id: string | null, parentId: string 
 	}
 }
 
-export async function createList(db: D1Database, input: CreateList & { kind: 'manual' | 'smart' }, now = Date.now()): Promise<List> {
+export async function createList(db: D1Database, input: CreateList & { kind: 'manual' | 'smart'; terms?: string[] }, now = Date.now()): Promise<List> {
 	await assertParent(db, null, input.parentId);
 	const id = crypto.randomUUID();
 	await db
 		.prepare('INSERT INTO lists (id, name, icon, parent_id, kind, query, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-		.bind(id, input.name, input.icon || null, input.parentId || null, input.kind, input.kind === 'smart' ? input.query : null, now)
+		.bind(id, input.name, input.icon || null, input.parentId || null, input.kind, input.kind === 'smart' ? JSON.stringify(input.terms) : null, now)
 		.run();
 	return (await getList(db, id))!;
 }
@@ -69,13 +79,13 @@ export async function patchList(db: D1Database, id: string, patch: PatchList): P
 	const list = await getList(db, id);
 	if (!list) throw new ListError(404, 'List not found.');
 	if (patch.parentId !== undefined) await assertParent(db, id, patch.parentId);
-	if (patch.query !== undefined && list.kind !== 'smart') throw new ListError(400, 'Only smart lists have a query.');
+	if (patch.terms !== undefined && list.kind !== 'smart') throw new ListError(400, 'Only smart lists have search terms.');
 	const sets: string[] = [];
 	const values: (string | null)[] = [];
 	if (patch.name !== undefined) sets.push('name = ?'), values.push(patch.name);
 	if (patch.icon !== undefined) sets.push('icon = ?'), values.push(patch.icon || null);
 	if (patch.parentId !== undefined) sets.push('parent_id = ?'), values.push(patch.parentId || null);
-	if (patch.query !== undefined) sets.push('query = ?'), values.push(patch.query);
+	if (patch.terms !== undefined) sets.push('query = ?'), values.push(JSON.stringify(patch.terms));
 	if (sets.length) await db.prepare(`UPDATE lists SET ${sets.join(', ')} WHERE id = ?`).bind(...values, id).run();
 	return (await getList(db, id))!;
 }
@@ -90,16 +100,16 @@ export async function deleteList(db: D1Database, id: string): Promise<boolean> {
 	return res.meta.changes > 0;
 }
 
-async function manualList(db: D1Database, id: string): Promise<List> {
+/** Any list can hold bookmarks added by hand; smart lists add their term matches on top. */
+async function existingList(db: D1Database, id: string): Promise<List> {
 	const list = await getList(db, id);
 	if (!list) throw new ListError(404, 'List not found.');
-	if (list.kind !== 'manual') throw new ListError(400, 'Smart lists fill themselves from their search.');
 	return list;
 }
 
 /** Idempotent. `changes()` makes the count move only when a row was really added/removed. */
 export async function addToList(db: D1Database, listId: string, bookmarkId: string): Promise<void> {
-	await manualList(db, listId);
+	await existingList(db, listId);
 	const exists = await db.prepare('SELECT 1 FROM bookmarks WHERE id = ?').bind(bookmarkId).first();
 	if (!exists) throw new ListError(404, 'Bookmark not found.');
 	await db.batch([
@@ -109,7 +119,7 @@ export async function addToList(db: D1Database, listId: string, bookmarkId: stri
 }
 
 export async function removeFromList(db: D1Database, listId: string, bookmarkId: string): Promise<void> {
-	await manualList(db, listId);
+	await existingList(db, listId);
 	await db.batch([
 		db.prepare('DELETE FROM bookmark_lists WHERE bookmark_id = ? AND list_id = ?').bind(bookmarkId, listId),
 		db.prepare('UPDATE lists SET item_count = item_count - changes() WHERE id = ?').bind(listId),

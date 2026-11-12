@@ -84,24 +84,31 @@ const SEARCH_COLUMNS = ['title', 'url', 'description', 'site_name', 'note', 'tex
 
 export async function listBookmarks(
 	db: D1Database,
-	q: { cursor?: string; limit: number; view: 'home' | 'archive' | 'favourites'; q?: string; list?: { id: string; kind: 'manual' | 'smart'; query: string | null } },
+	q: { cursor?: string; limit: number; view: 'home' | 'archive' | 'favourites'; q?: string; list?: { id: string; kind: 'manual' | 'smart'; terms: string[] } },
 ): Promise<BookmarkPage> {
 	const [at, id] = decodeCursor(q.cursor);
 	let from = 'bookmarks b';
 	let where: string;
 	const params: (string | number)[] = [];
-	const search = q.list?.kind === 'smart' ? q.list.query : q.q;
+	// A smart list = bookmarks added by hand + anything matching any of its terms.
+	// The search box is a single term.
+	const terms = q.list?.kind === 'smart' ? q.list.terms : q.q ? [q.q] : [];
+	const members = q.list?.kind === 'smart' ? 'b.id IN (SELECT bookmark_id FROM bookmark_lists WHERE list_id = ?)' : '';
+	if (members) params.push(q.list!.id);
 	if (q.list?.kind === 'manual') {
 		// Rows read = members of the list, via the bookmark_lists_list index.
 		from = 'bookmark_lists bl JOIN bookmarks b ON b.id = bl.bookmark_id';
 		where = 'bl.list_id = ?';
 		params.push(q.list.id);
-	} else if (search) {
+	} else if (terms.length) {
 		// Search covers every bookmark, archived included (Karakeep behaviour). Full scan by
 		// design: ~1 row read per bookmark per search, fine at personal scale.
-		const like = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-		where = `(${SEARCH_COLUMNS.map((c) => `b.${c} LIKE ? ESCAPE '\\'`).join(' OR ')})`;
-		params.push(...SEARCH_COLUMNS.map(() => like));
+		const clauses = terms.map((term) => {
+			const like = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+			params.push(...SEARCH_COLUMNS.map(() => like));
+			return SEARCH_COLUMNS.map((c) => `b.${c} LIKE ? ESCAPE '\\'`).join(' OR ');
+		});
+		where = `(${[members, ...clauses].filter(Boolean).join(' OR ')})`;
 	} else {
 		// Each branch matches an index exactly: bookmarks_home / bookmarks_fav.
 		where = q.view === 'favourites' ? 'b.favourited = 1' : `b.archived = ${q.view === 'archive' ? 1 : 0}`;

@@ -18,7 +18,8 @@ export const LIMITS = {
 	tagName: 64,
 	listName: 100,
 	listIcon: 16,
-	listQuery: 200,
+	listTerms: 10, // smart-list terms; 10 terms × 7 searched columns stays under D1's 100 bound params
+	listTerm: 100,
 	pageSize: 100,
 	ogBatch: 20,
 } as const;
@@ -111,7 +112,7 @@ export const List = z.object({
 	icon: z.string().nullable(),
 	parentId: z.string().nullable(),
 	kind: ListKind,
-	query: z.string().nullable(), // smart lists: the saved search
+	terms: z.array(z.string()), // smart lists: bookmarks matching any of these; [] for manual lists
 	itemCount: z.number(), // manual lists only; 0 for smart lists
 	createdAt: z.number(),
 });
@@ -119,7 +120,10 @@ export type List = z.infer<typeof List>;
 
 const listName = z.string().trim().min(1).max(LIMITS.listName);
 const listIcon = z.string().trim().max(LIMITS.listIcon);
-const listQuery = z.string().trim().min(1).max(LIMITS.listQuery);
+const listTerms = z
+	.array(z.string().trim().min(1).max(LIMITS.listTerm))
+	.max(LIMITS.listTerms)
+	.transform((terms) => [...new Set(terms)]);
 
 export const CreateList = z
 	.object({
@@ -127,16 +131,16 @@ export const CreateList = z
 		icon: listIcon.optional(),
 		parentId: z.string().max(64).nullable().optional(),
 		kind: ListKind.default('manual'),
-		query: listQuery.optional(),
+		terms: listTerms.optional(),
 	})
-	.refine((l) => l.kind === 'manual' || !!l.query, { message: 'smart lists need a `query`' });
+	.refine((l) => l.kind === 'manual' || !!l.terms?.length, { message: 'smart lists need at least one search term' });
 export type CreateList = z.input<typeof CreateList>;
 
 export const PatchList = z.object({
 	name: listName.optional(),
 	icon: listIcon.nullable().optional(),
 	parentId: z.string().max(64).nullable().optional(),
-	query: listQuery.optional(),
+	terms: listTerms.refine((t) => t.length > 0, 'a smart list needs at least one search term').optional(),
 });
 export type PatchList = z.infer<typeof PatchList>;
 

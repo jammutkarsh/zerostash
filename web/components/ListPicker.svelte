@@ -11,7 +11,7 @@
 	let { bookmark, buttonClass }: { bookmark: Bookmark; buttonClass: string } = $props();
 	let creating = $state(false);
 
-	const manual = $derived(lists.items.filter((l) => l.kind === 'manual'));
+	const manual = $derived(lists.items); // smart lists take hand-picked bookmarks too
 	const depth = (l: List): number => {
 		let d = 0;
 		for (let p = l.parentId; p && d < 10; p = lists.items.find((x) => x.id === p)?.parentId ?? null) d++;
@@ -27,7 +27,7 @@
 			}
 		};
 		walk(null);
-		// Manual lists whose parent is a smart list (or missing) still need a place.
+		// Lists whose parent is missing still need a place.
 		for (const l of manual) if (!out.includes(l)) out.push(l);
 		return out;
 	});
@@ -48,7 +48,7 @@
 					class="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left hover:bg-muted"
 					style="padding-left: {0.625 + depth(l) * 0.875}rem"
 				>
-					<span class="w-4 shrink-0 text-center">{l.icon || '•'}</span>
+					<span class="w-4 shrink-0 text-center">{l.icon || (l.kind === 'smart' ? '🔎' : '📁')}</span>
 					<span class="min-w-0 flex-1 truncate">{l.name}</span>
 					{#if member}<Check class="size-4 shrink-0 text-accent" />{/if}
 				</button>
@@ -64,4 +64,4 @@
 	{/snippet}
 </Menu>
 
-<ListDialog bind:open={creating} onCreated={(l) => l.kind === 'manual' && setInList(bookmark.id, l.id, true)} />
+<ListDialog bind:open={creating} onCreated={(l) => setInList(bookmark.id, l.id, true)} />

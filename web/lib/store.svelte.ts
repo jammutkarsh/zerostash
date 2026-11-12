@@ -22,7 +22,7 @@ export interface Feed {
 }
 
 const STORAGE_KEY = 'zs_cache_v2';
-const LISTS_KEY = 'zs_lists_v1';
+const LISTS_KEY = 'zs_lists_v2'; // v2: smart lists have `terms` instead of `query`
 const PERSIST_LIMIT = 60; // per view; enough for an instant first screen
 const VIEWS: View[] = ['home', 'favourites', 'archive'];
 
@@ -39,7 +39,11 @@ function restore(): Record<string, Feed> {
 	try {
 		const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Record<string, Pick<Feed, 'items' | 'cursor' | 'done'>>;
 		const out: Record<string, Feed> = {};
-		for (const view of VIEWS) if (saved[view]) out[view] = { ...blank(view, '', ''), ...saved[view] };
+		for (const view of VIEWS) {
+			const f = saved[view];
+			// Cached data may predate a field the UI now relies on; a bad cache must never blank the page.
+			if (f && Array.isArray(f.items)) out[view] = { ...blank(view, '', ''), ...f, items: f.items.map((b) => ({ ...b, listIds: Array.isArray(b.listIds) ? b.listIds : [] })) };
+		}
 		return out;
 	} catch {
 		return {};
@@ -48,7 +52,8 @@ function restore(): Record<string, Feed> {
 
 function restoreLists(): List[] {
 	try {
-		return JSON.parse(localStorage.getItem(LISTS_KEY) ?? '[]') as List[];
+		const saved = JSON.parse(localStorage.getItem(LISTS_KEY) ?? '[]') as List[];
+		return Array.isArray(saved) ? saved.map((l) => ({ ...l, terms: Array.isArray(l.terms) ? l.terms : [] })) : [];
 	} catch {
 		return [];
 	}
@@ -83,7 +88,8 @@ export function clearCache() {
 	try {
 		localStorage.removeItem(STORAGE_KEY);
 		localStorage.removeItem(LISTS_KEY);
-		localStorage.removeItem('zs_cache_v1'); // pre-lists cache format
+		localStorage.removeItem('zs_cache_v1'); // older cache formats
+		localStorage.removeItem('zs_lists_v1');
 	} catch {}
 }
 
@@ -150,8 +156,9 @@ export async function refresh(feed: Feed) {
 function belongs(feed: Feed, b: Bookmark): boolean {
 	if (feed.listId) {
 		const list = lists.items.find((l) => l.id === feed.listId);
-		if (list?.kind === 'manual') return b.listIds.includes(feed.listId);
-		return feed.items.some((x) => x.id === b.id); // smart lists only update in place
+		if (b.listIds.includes(feed.listId)) return true;
+		// Smart lists also show term matches, which only the server can decide: keep what's there.
+		return list?.kind === 'smart' && feed.items.some((x) => x.id === b.id);
 	}
 	if (feed.q) return feed.items.some((x) => x.id === b.id); // searches only update in place
 	return feed.view === 'favourites' ? b.favourited : feed.view === 'archive' ? b.archived : !b.archived;
@@ -221,7 +228,7 @@ export async function remove(id: string) {
 // ---- lists ----
 
 function bumpCounts(listIds: string[], delta: number) {
-	for (const l of lists.items) if (listIds.includes(l.id) && l.kind === 'manual') l.itemCount = Math.max(0, l.itemCount + delta);
+	for (const l of lists.items) if (listIds.includes(l.id)) l.itemCount = Math.max(0, l.itemCount + delta);
 }
 
 export async function loadLists() {
@@ -243,7 +250,7 @@ export async function createList(input: CreateList): Promise<List> {
 export async function updateList(id: string, patch: PatchList): Promise<List> {
 	const list = await api.patchList(id, patch);
 	lists.items = lists.items.map((l) => (l.id === id ? list : l)).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-	if (patch.query !== undefined) delete feeds[feedKey('home', '', id)]; // smart list's results changed
+	if (patch.terms !== undefined) delete feeds[feedKey('home', '', id)]; // smart list's results changed
 	persist();
 	return list;
 }

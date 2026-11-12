@@ -99,7 +99,7 @@
 
 	const DRAG_TYPE = 'application/x-zerostash-bookmark';
 	function ondragover(e: DragEvent, list: List) {
-		if (list.kind !== 'manual' || !e.dataTransfer?.types.includes(DRAG_TYPE)) return;
+		if (!e.dataTransfer?.types.includes(DRAG_TYPE)) return;
 		e.preventDefault();
 		e.dataTransfer.dropEffect = 'copy';
 		dropTarget = list.id;
@@ -107,7 +107,7 @@
 	function ondrop(e: DragEvent, list: List) {
 		const id = e.dataTransfer?.getData(DRAG_TYPE);
 		dropTarget = '';
-		if (!id || list.kind !== 'manual') return;
+		if (!id) return;
 		e.preventDefault();
 		void setInList(id, list.id, true);
 		toast(`Added to ${list.icon ? `${list.icon} ` : ''}${list.name}`, 2000);
@@ -237,7 +237,7 @@
 				<a
 					href="/dashboard/lists/{list.id}"
 					onclick={(e) => (e.preventDefault(), go(`/dashboard/lists/${list.id}`))}
-					title={list.kind === 'smart' ? `${list.name} (smart list: “${list.query}”)` : list.name}
+					title={list.kind === 'smart' ? `${list.name}: smart list matching ${list.terms.join(', ')}` : list.name}
 					class="{item} {mini ? 'justify-center px-0' : ''} {active ? 'bg-muted font-medium text-foreground' : idle}"
 					style={mini ? '' : `padding-left: ${0.625 + depth * 0.875}rem`}
 				>
@@ -348,7 +348,12 @@
 						<span class="truncate">{currentList?.name ?? 'List'}</span>
 					</h1>
 					{#if currentList?.kind === 'smart'}
-						<span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Smart · “{currentList.query}”</span>
+						<span class="text-xs text-muted-foreground">matches any of</span>
+						<span class="flex min-w-0 flex-wrap gap-1">
+							{#each currentList.terms as term (term)}
+								<span class="rounded-full border bg-card px-2 py-0.5 text-xs font-medium">{term}</span>
+							{/each}
+						</span>
 					{/if}
 					{#if currentList}
 						<button onclick={() => openListDialog(currentList)} aria-label="Edit list" title="Edit list" class="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
@@ -357,7 +362,7 @@
 					{/if}
 				</div>
 			{/if}
-			{#key `${view}|${query}|${listId}|${currentList?.query ?? ''}`}
+			{#key `${view}|${query}|${listId}|${currentList?.terms.join('\u0000') ?? ''}`}
 				<BookmarkGrid {view} {query} {listId} {layout} />
 			{/key}
 		</main>

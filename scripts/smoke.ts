@@ -110,7 +110,7 @@ check('create list', parent.status === 201 && parent.json.kind === 'manual' && p
 const child = await createList({ name: `Smoke child ${run}`, parentId: parent.json.id });
 check('nested list', child.json?.parentId === parent.json.id, child.json);
 check('list cannot be its own ancestor', (await call('PATCH', `/lists/${parent.json.id}`, { parentId: child.json.id })).status === 400);
-check('smart list needs a query', (await call('POST', '/lists', { name: 'x', kind: 'smart' })).status === 400);
+check('smart list needs a term', (await call('POST', '/lists', { name: 'x', kind: 'smart', terms: [] })).status === 400);
 
 const member = await create({ type: 'link', url: `${url}/listed`, source: 'web' });
 const mid = member.json.bookmark.id;
@@ -132,10 +132,22 @@ created.splice(created.indexOf(mid), 1);
 const c2 = (await call('GET', '/lists')).json?.items.find((l: { id: string }) => l.id === child.json.id);
 check('deleting a bookmark decrements its lists', c2?.itemCount === 0, c2);
 
-const smart = await createList({ name: `Smart ${run}`, kind: 'smart', query: `smoke-${run}` });
+const note2 = await create({ type: 'text', text: `zebra-${run} note`, source: 'web' });
+const smart = await createList({ name: `Smart ${run}`, kind: 'smart', terms: [`smoke-${run}`, `zebra-${run}`, `smoke-${run}`] });
+check('smart list dedupes terms', smart.json?.terms?.length === 2, smart.json);
 const smartView = await call('GET', `/bookmarks?list=${smart.json.id}`);
-check('smart list runs its search', smartView.json?.items.some((b: { url: string }) => b.url?.includes(`smoke-${run}`)), smartView.json?.items.length);
-check('smart lists reject manual adds', (await call('PUT', `/lists/${smart.json.id}/bookmarks/${a.json.bookmark.id}`)).status === 400);
+check(
+	'smart list matches any term',
+	smartView.json?.items.some((b: { url: string }) => b.url?.includes(`smoke-${run}`)) && smartView.json.items.some((b: { id: string }) => b.id === note2.json.bookmark.id),
+	smartView.json?.items.length,
+);
+check('11 terms rejected', (await call('PATCH', `/lists/${smart.json.id}`, { terms: Array.from({ length: 11 }, (_, i) => `t${i}`) })).status === 400);
+const extra = await create({ type: 'text', text: `unrelated ${run}`, source: 'web' });
+await call('PUT', `/lists/${smart.json.id}/bookmarks/${extra.json.bookmark.id}`);
+check(
+	'smart lists also hold bookmarks added by hand',
+	(await call('GET', `/bookmarks?list=${smart.json.id}`)).json?.items.some((b: { id: string }) => b.id === extra.json.bookmark.id),
+);
 check('unknown list → 404', (await call('GET', '/bookmarks?list=nope')).status === 404);
 
 await call('DELETE', `/lists/${parent.json.id}`);

@@ -2,6 +2,8 @@
 	import type { List } from '../../shared/schemas';
 	import { navigate, route } from '../lib/router.svelte';
 	import { createList, deleteList, lists, updateList } from '../lib/store.svelte';
+	import EmojiPicker from './EmojiPicker.svelte';
+	import TermsInput from './TermsInput.svelte';
 
 	// Create or edit a list. `list` = edit mode. `onCreated` lets callers (the card's list
 	// picker) act on the new list, e.g. add the bookmark to it.
@@ -11,13 +13,11 @@
 		onCreated,
 	}: { open?: boolean; list?: List | null; onCreated?: (l: List) => void } = $props();
 
-	const EMOJI = ['📚', '📌', '⭐', '💡', '🧠', '🛠️', '💻', '🎨', '🎵', '🎬', '📖', '📰', '🍳', '✈️', '🏠', '💼', '🧪', '🎮', '❤️', '🔥'];
-
 	let name = $state('');
 	let icon = $state('');
 	let parentId = $state('');
 	let kind = $state<'manual' | 'smart'>('manual');
-	let query = $state('');
+	let terms = $state<string[]>([]);
 	let error = $state('');
 	let busy = $state(false);
 	let nameEl = $state<HTMLInputElement>();
@@ -29,7 +29,7 @@
 		icon = list?.icon ?? '';
 		parentId = list?.parentId ?? '';
 		kind = list?.kind ?? 'manual';
-		query = list?.query ?? '';
+		terms = list ? [...list.terms] : [];
 		error = '';
 		queueMicrotask(() => nameEl?.focus());
 	});
@@ -48,13 +48,14 @@
 
 	async function save(e: SubmitEvent) {
 		e.preventDefault();
+		if ((list?.kind ?? kind) === 'smart' && !terms.length) return void (error = 'Add at least one search term.');
 		busy = true;
 		error = '';
 		try {
 			if (list) {
-				await updateList(list.id, { name, icon: icon || null, parentId: parentId || null, ...(list.kind === 'smart' ? { query } : {}) });
+				await updateList(list.id, { name, icon: icon || null, parentId: parentId || null, ...(list.kind === 'smart' ? { terms } : {}) });
 			} else {
-				const created = await createList({ name, icon: icon || undefined, parentId: parentId || null, kind, ...(kind === 'smart' ? { query } : {}) });
+				const created = await createList({ name, icon: icon || undefined, parentId: parentId || null, kind, ...(kind === 'smart' ? { terms } : {}) });
 				onCreated?.(created);
 			}
 			open = false;
@@ -92,18 +93,13 @@
 			<h2 class="text-lg font-semibold">{list ? 'Edit list' : 'New list'}</h2>
 
 			<div class="flex gap-2">
-				<input bind:value={icon} maxlength="16" aria-label="Icon" placeholder="🙂" class="{input} w-14 shrink-0 px-0 text-center text-lg" />
+				<EmojiPicker bind:value={icon} />
 				<input bind:this={nameEl} bind:value={name} required maxlength="100" aria-label="Name" placeholder="List name" class={field} />
-			</div>
-			<div class="flex flex-wrap gap-1">
-				{#each EMOJI as e (e)}
-					<button type="button" onclick={() => (icon = e)} class="grid size-8 place-items-center rounded-md text-lg hover:bg-muted {icon === e ? 'bg-muted ring-1 ring-accent' : ''}">{e}</button>
-				{/each}
 			</div>
 
 			{#if !list}
 				<div class="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm">
-					{#each [['manual', 'Manual', 'You add bookmarks'], ['smart', 'Smart', 'Fills itself from a search']] as [value, label, hint] (value)}
+					{#each [['manual', 'Manual', 'You add bookmarks'], ['smart', 'Smart', 'Also fills itself from search terms']] as [value, label, hint] (value)}
 						<button type="button" onclick={() => (kind = value as 'manual' | 'smart')} class="rounded-md px-3 py-1.5 text-left {kind === value ? 'bg-card shadow-sm' : 'text-muted-foreground'}">
 							<span class="block font-medium">{label}</span><span class="text-xs text-muted-foreground">{hint}</span>
 						</button>
@@ -112,11 +108,13 @@
 			{/if}
 
 			{#if (list?.kind ?? kind) === 'smart'}
-				<label class="grid gap-1.5 text-sm font-medium">
-					Search
-					<input bind:value={query} required maxlength="200" placeholder="e.g. cloudflare" class="{field} font-normal" />
-					<span class="text-xs font-normal text-muted-foreground">Bookmarks whose title, link, description or note contain this.</span>
-				</label>
+				<div class="grid gap-1.5 text-sm font-medium">
+					<span>Search terms</span>
+					<TermsInput bind:terms />
+					<span class="text-xs font-normal text-muted-foreground">
+						Separate with a comma or Enter. The list shows bookmarks whose title, link, description or note contain <b>any</b> of these (up to 10), plus any you add by hand.
+					</span>
+				</div>
 			{/if}
 
 			<label class="grid gap-1.5 text-sm font-medium">
