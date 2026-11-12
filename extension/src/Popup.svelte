@@ -13,9 +13,9 @@
 	type State =
 		| { kind: 'loading' }
 		| { kind: 'setup' }
-		| { kind: 'ready'; tab: chrome.tabs.Tab; savable: boolean }
+		| { kind: 'ready'; tab: chrome.tabs.Tab; savable: boolean; ownServer?: boolean }
 		| { kind: 'saving' }
-		| { kind: 'saved'; bookmark: Bookmark }
+		| { kind: 'saved'; bookmark: Bookmark; tab: chrome.tabs.Tab; alreadyExists: boolean }
 		| { kind: 'error'; message: string };
 
 	let ui = $state<State>({ kind: 'loading' });
@@ -29,18 +29,19 @@
 		if (!isConfigured(settings)) return (ui = { kind: 'setup' });
 		const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 		// The app itself and browser pages can't be stashed; the popup then just offers "Open Zerostash".
-		const savable = !!tab && isHttpUrl(tab.url) && !isOwnServer(tab.url, settings);
+		const ownServer = !!tab && isOwnServer(tab.url, settings);
+		const savable = !!tab && isHttpUrl(tab.url) && !ownServer;
 		if (savable && settings.autoSave) await save(tab);
-		else ui = { kind: 'ready', tab, savable };
+		else ui = { kind: 'ready', tab, savable, ownServer };
 	});
 
 	async function save(tab: chrome.tabs.Tab) {
 		ui = { kind: 'saving' };
 		try {
 			const result = await saveTab(tab);
-			if (!result) return void (ui = { kind: 'ready', tab, savable: false });
+			if (!result) return void (ui = { kind: 'ready', tab, savable: false, ownServer: true });
 			note = result.bookmark.note ?? '';
-			ui = { kind: 'saved', bookmark: result.bookmark };
+			ui = { kind: 'saved', bookmark: result.bookmark, tab, alreadyExists: result.alreadyExists };
 		} catch (e) {
 			ui = { kind: 'error', message: e instanceof Error ? e.message : String(e) };
 		}
@@ -54,6 +55,17 @@
 			await server.patch(bookmark.id, { note });
 			noteSaved = true;
 		}, 400);
+	}
+
+	// Undo a save made from this popup. Never offered for a bookmark that existed before.
+	async function undo(bookmark: Bookmark, tab: chrome.tabs.Tab) {
+		clearTimeout(noteTimer);
+		try {
+			await server.remove(bookmark.id);
+			ui = { kind: 'ready', tab, savable: true };
+		} catch (e) {
+			ui = { kind: 'error', message: e instanceof Error ? e.message : String(e) };
+		}
 	}
 
 	function openApp() {
@@ -85,13 +97,16 @@
 				{@const tab = ui.tab}
 				<p class="mb-3 line-clamp-2 font-medium">{tab.title || tab.url}</p>
 				<button onclick={() => save(tab)} class="mb-2 w-full rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground">Save this page</button>
+			{:else}
+				<p class="mb-3 text-muted-foreground">{ui.ownServer ? 'This is your Zerostash.' : 'Only web pages (http and https) can be saved.'}</p>
 			{/if}
 			<button onclick={openApp} class="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 font-medium hover:bg-muted">
 				<ExternalLink class="size-4" />Open Zerostash
 			</button>
 		{:else if ui.kind === 'saved'}
 			{@const b = ui.bookmark}
-			<p class="mb-1 flex items-center gap-2 text-base font-semibold text-green-700 dark:text-green-400"><CircleCheck class="size-5" />Saved</p>
+			{@const tab = ui.tab}
+			<p class="mb-1 flex items-center gap-2 text-base font-semibold text-green-700 dark:text-green-400"><CircleCheck class="size-5" />{ui.alreadyExists ? 'Already saved' : 'Saved'}</p>
 			<p class="mb-3 line-clamp-2 text-muted-foreground">{b.title || b.url}</p>
 			<textarea
 				bind:value={note}
@@ -101,7 +116,11 @@
 				placeholder="Add a note"
 				class="w-full resize-none rounded-md border bg-card p-2 outline-none focus:ring-2 focus:ring-accent"
 			></textarea>
-			{#if noteSaved}<p class="mt-1 text-right text-xs text-muted-foreground">Note saved</p>{/if}
+			<div class="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+				{#if !ui.alreadyExists}<button onclick={() => undo(b, tab)} class="rounded hover:text-foreground hover:underline">Undo</button>{/if}
+				<button onclick={openApp} class="rounded hover:text-foreground hover:underline">Open Zerostash</button>
+				{#if noteSaved}<span class="ml-auto">Note saved</span>{/if}
+			</div>
 		{:else}
 			<p class="mb-3 text-destructive">{ui.message}</p>
 			<button onclick={openApp} class="w-full rounded-md border px-3 py-2 font-medium hover:bg-muted">Open Zerostash</button>
