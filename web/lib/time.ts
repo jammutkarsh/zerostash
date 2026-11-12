@@ -17,3 +17,16 @@ export function relativeTime(ms: number, now = Date.now()): string {
 	}
 	return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
+
+/** Card-sized age: "now", "5m", "3h", "2d", "3w", then "12 Nov" / "12 Nov 2025". */
+export function shortAge(ms: number, now = Date.now()): string {
+	const minutes = Math.floor((now - ms) / 60_000);
+	if (minutes < 1) return 'now';
+	if (minutes < 60) return `${minutes}m`;
+	if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`;
+	if (minutes < 60 * 24 * 7) return `${Math.floor(minutes / 1440)}d`;
+	if (minutes < 60 * 24 * 30) return `${Math.floor(minutes / 10080)}w`;
+	const d = new Date(ms);
+	const sameYear = d.getFullYear() === new Date(now).getFullYear();
+	return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) });
+}

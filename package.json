@@ -9,8 +9,8 @@
 		"extension"
 	],
 	"scripts": {
-		"dev": "vite",
-		"build": "vite build && bun scripts/openapi.ts",
+		"dev": "bun scripts/openapi.ts && vite",
+		"build": "bun scripts/openapi.ts && vite build",
 		"deploy": "bun run build && (wrangler d1 migrations apply DB --remote || true) && wrangler deploy && wrangler d1 migrations apply DB --remote",
 		"db:migrate:local": "wrangler d1 migrations apply DB --local",
 		"types": "wrangler types server/worker-configuration.d.ts",

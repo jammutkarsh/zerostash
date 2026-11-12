@@ -1,6 +1,7 @@
 import { isHttpUrl, parseOg, type OgData } from '../../../shared/og';
 import type { Bookmark, OgFields } from '../../../shared/schemas';
 import { server } from './api';
+import { getSettings, isOwnServer } from './settings';
 
 /** Pick the fields the server accepts, dropping empty ones. */
 export function ogFields(og: OgData): OgFields {
@@ -26,10 +27,13 @@ async function readTab(tabId: number): Promise<{ url: string; og: OgData } | nul
 	}
 }
 
-export async function saveTab(tab: chrome.tabs.Tab): Promise<{ bookmark: Bookmark; alreadyExists: boolean }> {
+/** Saves the tab, or returns null (silently) for the user's own Zerostash pages. */
+export async function saveTab(tab: chrome.tabs.Tab): Promise<{ bookmark: Bookmark; alreadyExists: boolean } | null> {
+	if (isOwnServer(tab.url, await getSettings())) return null;
 	const page = tab.id !== undefined ? await readTab(tab.id) : null;
 	const url = page?.url ?? tab.url;
 	if (!isHttpUrl(url)) throw new Error('Only web pages (http:// and https://) can be saved.');
+	if (isOwnServer(url, await getSettings())) return null;
 	const og = page ? ogFields(page.og) : {};
 	og.title ??= tab.title || undefined;
 	const result = await server.create({ type: 'link', url, source: 'extension', og: page ? { source: 'tab', ...og } : undefined });
@@ -39,6 +43,7 @@ export async function saveTab(tab: chrome.tabs.Tab): Promise<{ bookmark: Bookmar
 
 export async function saveLink(url: string) {
 	if (!isHttpUrl(url)) throw new Error('Only http(s) links can be saved.');
+	if (isOwnServer(url, await getSettings())) return null;
 	const result = await server.create({ type: 'link', url, source: 'extension' });
 	return result;
 }

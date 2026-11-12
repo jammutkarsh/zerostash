@@ -11,3 +11,4 @@ zerostash-*.xpi
 server/worker-configuration.d.ts
 .prod.vars
 .claude/
+public/openapi.json

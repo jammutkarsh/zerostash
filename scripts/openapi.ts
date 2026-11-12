@@ -1,5 +1,5 @@
-// Writes the OpenAPI spec as a static asset (dist/client/openapi.json) at build time,
-// so serving it never costs Worker CPU. Run after `vite build`.
+// Writes the OpenAPI spec as a static asset (public/openapi.json, served at /openapi.json),
+// so serving it never costs Worker CPU. Runs before `vite dev` and `vite build`.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import pkg from '../package.json';
 import { app } from '../server/app';
@@ -16,6 +16,6 @@ const doc = app.getOpenAPI31Document({
 	security: [{ bearer: [] }],
 });
 
-mkdirSync('dist/client', { recursive: true });
-writeFileSync('dist/client/openapi.json', JSON.stringify(doc, null, 2));
+mkdirSync('public', { recursive: true });
+writeFileSync('public/openapi.json', `${JSON.stringify(doc, null, 2)}\n`);
 console.log(`openapi.json: ${Object.keys(doc.paths ?? {}).length} paths`);

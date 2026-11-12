@@ -4,7 +4,8 @@ export interface Settings {
 	autoSave: boolean;
 }
 
-const DEFAULTS: Settings = { serverUrl: '', secret: '', autoSave: true };
+// autoSave is off by default: clicking the button may just be a way to open the app.
+const DEFAULTS: Settings = { serverUrl: '', secret: '', autoSave: false };
 
 export async function getSettings(): Promise<Settings> {
 	return { ...DEFAULTS, ...(await chrome.storage.local.get<Partial<Settings>>(DEFAULTS)) };
@@ -27,3 +28,13 @@ export function normaliseServerUrl(input: string): string {
 }
 
 export const ALL_URLS = { origins: ['<all_urls>'] };
+
+/** Pages of the user's own Zerostash server are never bookmarked. */
+export function isOwnServer(url: string | undefined, s: Settings): boolean {
+	if (!url || !s.serverUrl) return false;
+	try {
+		return new URL(url).origin === new URL(s.serverUrl).origin;
+	} catch {
+		return false;
+	}
+}

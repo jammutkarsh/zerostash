@@ -1,11 +1,10 @@
 <script lang="ts">
-	import Info from '@lucide/svelte/icons/info';
 	import { isHttpUrl } from '../../shared/og';
-	import type { Bookmark } from '../../shared/schemas';
 	import { api, notifyExtension } from '../lib/api';
 	import { watchPreview } from '../lib/preview';
+	import { upsert } from '../lib/store.svelte';
 
-	let { onSaved, compact = false }: { onSaved: (b: Bookmark) => void; compact?: boolean } = $props();
+	let { compact = false }: { compact?: boolean } = $props();
 	let value = $state('');
 	let busy = $state(false);
 	let message = $state('');
@@ -20,11 +19,11 @@
 				? await api.create({ type: 'link', url: input, source: 'web' })
 				: await api.create({ type: 'text', text: input, source: 'web' });
 			value = '';
-			onSaved(bookmark);
+			upsert(bookmark);
 			if (alreadyExists) message = 'Already in your stash.';
 			if (bookmark.ogStatus === 'pending') {
 				notifyExtension();
-				watchPreview(bookmark.id, onSaved);
+				watchPreview(bookmark.id, upsert);
 			}
 		} catch (e) {
 			message = e instanceof Error ? e.message : String(e);
@@ -33,23 +32,22 @@
 		}
 	}
 
+	// Enter saves, Shift+Enter adds a line.
 	function onkeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault();
 			void save();
-		}
+		} else if (e.key === 'Escape') (e.currentTarget as HTMLElement).blur();
 	}
 </script>
 
 <div class="flex flex-col rounded-lg border bg-card p-4 shadow-sm">
-	<div class="mb-2 flex items-center justify-between">
-		<span class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">New item</span>
-		<span title="A link becomes a bookmark with a preview; anything else becomes a note." class="text-muted-foreground"><Info class="size-4" /></span>
-	</div>
+	<p class="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">New item</p>
 	<textarea
+		id="quick-add"
 		bind:value
 		{onkeydown}
-		rows={compact ? 2 : 6}
+		rows={compact ? 2 : 5}
 		aria-label="New bookmark or note"
 		placeholder="Paste a link or write a note…"
 		class="w-full flex-1 resize-none bg-transparent text-[15px] leading-relaxed outline-none placeholder:text-muted-foreground"
@@ -62,5 +60,4 @@
 	>
 		{busy ? 'Saving…' : 'Save'}
 	</button>
-	<p class="mt-2 text-center text-[11px] text-muted-foreground">Enter to save · Shift+Enter for a new line</p>
 </div>

@@ -78,7 +78,7 @@ const IdParam = z.object({ id: z.string().max(64) });
 
 const routes = app
 	.openapi(
-		createRoute({ method: 'get', path: '/api/v1/health', responses: { 200: json(Health, 'Server info') } }),
+		createRoute({ method: 'get', path: '/api/v1/health', summary: 'Server info', description: 'Public. Name, version and API version of this server; `setupRequired` is true until ZEROSTASH_SECRET is set.', responses: { 200: json(Health, 'Server info') } }),
 		(c) =>
 			c.json({
 				name: 'zerostash' as const,
@@ -91,6 +91,8 @@ const routes = app
 		createRoute({
 			method: 'post',
 			path: '/api/v1/auth/login',
+			summary: 'Sign in',
+			description: 'Exchange the secret for an HttpOnly session cookie (used by the web app).',
 			request: { body: { content: { 'application/json': { schema: z.object({ secret: z.string().max(1024) }) } } } },
 			responses: { 204: { description: 'Logged in; session cookie set' }, ...errors },
 		}),
@@ -108,7 +110,7 @@ const routes = app
 		},
 	)
 	.openapi(
-		createRoute({ method: 'post', path: '/api/v1/auth/logout', responses: { 204: { description: 'Logged out' } } }),
+		createRoute({ method: 'post', path: '/api/v1/auth/logout', summary: 'Sign out', description: 'Clear the session cookie.', responses: { 204: { description: 'Logged out' } } }),
 		(c) => {
 			deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true });
 			return c.body(null, 204);
@@ -118,6 +120,8 @@ const routes = app
 		createRoute({
 			method: 'get',
 			path: '/api/v1/me',
+			summary: 'Check credentials',
+			description: 'Returns 200 when the bearer secret or session cookie is valid.',
 			responses: { 200: json(z.object({ ok: z.literal(true), version: z.string(), apiVersion: z.number() }), 'Authenticated'), ...errors },
 		}),
 		(c) => c.json({ ok: true as const, version: pkg.version, apiVersion: API_VERSION }, 200),
@@ -126,6 +130,8 @@ const routes = app
 		createRoute({
 			method: 'get',
 			path: '/api/v1/bookmarks',
+			summary: 'List bookmarks',
+			description: 'Newest first, cursor-paginated. `view` picks home/favourites/archive; `q` searches every bookmark.',
 			request: { query: ListQuery },
 			responses: { 200: json(BookmarkPage, 'A page of bookmarks, newest first'), ...errors },
 		}),
@@ -135,6 +141,8 @@ const routes = app
 		createRoute({
 			method: 'post',
 			path: '/api/v1/bookmarks',
+			summary: 'Save a bookmark',
+			description: 'Save a link or a text note. Saving a URL that already exists returns the existing bookmark with `alreadyExists: true`.',
 			request: { body: { content: { 'application/json': { schema: CreateBookmark } }, required: true } },
 			responses: {
 				201: json(z.object({ bookmark: Bookmark, alreadyExists: z.literal(false) }), 'Created'),
@@ -153,6 +161,8 @@ const routes = app
 		createRoute({
 			method: 'get',
 			path: '/api/v1/bookmarks/needs-og',
+			summary: 'Links waiting for previews',
+			description: 'Used by the browser extension to fetch OpenGraph previews from the browser.',
 			request: { query: z.object({ limit: z.coerce.number().int().min(1).max(LIMITS.ogBatch).default(LIMITS.ogBatch) }) },
 			responses: { 200: json(z.object({ items: z.array(z.object({ id: z.string(), url: z.string() })) }), 'Links waiting for previews'), ...errors },
 		}),
@@ -162,6 +172,8 @@ const routes = app
 		createRoute({
 			method: 'get',
 			path: '/api/v1/bookmarks/{id}',
+			summary: 'Get a bookmark',
+			description: '',
 			request: { params: IdParam },
 			responses: { 200: json(Bookmark, 'The bookmark'), 404: json(ApiError, 'Not found'), ...errors },
 		}),
@@ -174,6 +186,8 @@ const routes = app
 		createRoute({
 			method: 'patch',
 			path: '/api/v1/bookmarks/{id}',
+			summary: 'Update a bookmark',
+			description: 'Edit title, note or text; favourite or archive. Editing the title stops previews from overwriting it.',
 			request: { params: IdParam, body: { content: { 'application/json': { schema: PatchBookmark } }, required: true } },
 			responses: { 200: json(Bookmark, 'Updated'), 404: json(ApiError, 'Not found'), ...errors },
 		}),
@@ -186,6 +200,8 @@ const routes = app
 		createRoute({
 			method: 'put',
 			path: '/api/v1/bookmarks/{id}/og',
+			summary: 'Write preview data',
+			description: 'Extension-supplied OpenGraph data. Ignored when a higher-priority source (the open tab, a bookmarklet) already set it.',
 			request: { params: IdParam, body: { content: { 'application/json': { schema: OgPatch } }, required: true } },
 			responses: { 200: json(z.object({ applied: z.boolean() }), 'Applied unless a higher-priority source already set it'), ...errors },
 		}),
@@ -203,6 +219,8 @@ const routes = app
 		createRoute({
 			method: 'delete',
 			path: '/api/v1/bookmarks/{id}',
+			summary: 'Delete a bookmark',
+			description: '',
 			request: { params: IdParam },
 			responses: { 204: { description: 'Deleted' }, 404: json(ApiError, 'Not found'), ...errors },
 		}),

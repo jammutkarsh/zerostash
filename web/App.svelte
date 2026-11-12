@@ -1,5 +1,7 @@
 <script lang="ts">
+	import ApiDocs from './components/ApiDocs.svelte';
 	import Dashboard from './components/Dashboard.svelte';
+	import Toasts from './components/Toasts.svelte';
 	import Landing from './components/Landing.svelte';
 	import Login from './components/Login.svelte';
 	import { redirect, route } from './lib/router.svelte';
@@ -14,6 +16,8 @@
 				: 'landing'
 			: route.path === '/login'
 				? 'login'
+				: route.path === '/api-docs'
+					? 'docs'
 				: route.path === '/dashboard' || route.path.startsWith('/dashboard/')
 					? 'dashboard'
 					: 'unknown',
@@ -29,6 +33,9 @@
 	<Landing />
 {:else if page === 'login'}
 	<Login />
+{:else if page === 'docs'}
+	<ApiDocs />
 {:else if page === 'dashboard'}
 	<Dashboard />
 {/if}
+<Toasts />

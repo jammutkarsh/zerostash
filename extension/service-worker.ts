@@ -60,9 +60,11 @@ async function flash(text: string, color: string) {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 	try {
-		if (info.menuItemId === 'save-page' && tab) await saveTab(tab);
-		else if (info.menuItemId === 'save-link' && info.linkUrl) await saveLink(info.linkUrl);
-		else if (info.menuItemId === 'save-selection' && info.selectionText) await saveSelection(info.selectionText, tab);
+		let saved: unknown = null;
+		if (info.menuItemId === 'save-page' && tab) saved = await saveTab(tab);
+		else if (info.menuItemId === 'save-link' && info.linkUrl) saved = await saveLink(info.linkUrl);
+		else if (info.menuItemId === 'save-selection' && info.selectionText) saved = await saveSelection(info.selectionText, tab);
+		if (!saved) return; // the user's own Zerostash page: do nothing
 		await flash('✓', '#16a34a');
 		void enrich().catch(() => {});
 	} catch (e) {

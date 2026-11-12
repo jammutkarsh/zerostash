@@ -5,7 +5,7 @@
 
 	let serverUrl = $state('');
 	let secret = $state('');
-	let autoSave = $state(true);
+	let autoSave = $state(false);
 	let previewsAllowed = $state(false);
 	let status = $state<{ ok: boolean; text: string } | null>(null);
 	let busy = $state(false);
@@ -85,7 +85,7 @@
 		</label>
 		<label class="flex items-center gap-2">
 			<input type="checkbox" bind:checked={autoSave} />
-			Save immediately when I click the toolbar button
+			Save the page as soon as I click the toolbar button
 		</label>
 		<button disabled={busy} class="rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground disabled:opacity-60">
 			{busy ? 'Checking…' : 'Save & test connection'}

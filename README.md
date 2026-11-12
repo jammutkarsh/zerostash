@@ -36,10 +36,18 @@ bun run deploy                             # builds, creates the database + queu
 openssl rand -hex 32 | npx wrangler secret put ZEROSTASH_SECRET   # keep a copy: it's your login
 ```
 
+## Keep your server up to date
+
+The dashboard shows your version in the sidebar and an **Update available** notice when a newer
+[release](https://github.com/jammutkarsh/zerostash/releases) is out.
+
+- **Deployed with the button or from a fork:** click **Sync fork** on your GitHub copy. If Workers Builds is connected, Cloudflare redeploys and the `deploy` script applies database migrations.
+- **Deploying on tags (this repo's flow):** add two repository secrets, `CLOUDFLARE_API_TOKEN` (a token from the *Edit Cloudflare Workers* template plus *D1: Edit* and *Queues: Edit*) and `CLOUDFLARE_ACCOUNT_ID`. Then `git tag v0.2.0 && git push origin v0.2.0` deploys that version and publishes a release with the extension zips.
+
 ## Connect the extension
 
 Install the extension, enter your Worker URL and the same secret, then click **Allow link previews**.
-That's it — the toolbar button, <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> on Mac or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> elsewhere, saves the current page.
+Click the toolbar button (or press <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> on Mac, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> elsewhere) and choose **Stash this page**, or **Open Zerostash**. Turn on instant saving in the extension settings if you'd rather skip the click.
 
 ## Why it stays free
 
