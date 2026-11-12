@@ -59,6 +59,19 @@ export function viewItems(view: View, q = '', listId = ''): Bookmark[] {
 	return select(all(), { view, q, list });
 }
 
+/**
+ * Bookmarks per sidebar entry (home, archive, favourites, list ids), counted locally.
+ * Undefined until the whole library is here, so counts never climb mid-download.
+ */
+export function sidebarCounts(): Record<string, number> | undefined {
+	if (!sync.complete) return undefined;
+	const items = all();
+	const out: Record<string, number> = {};
+	for (const view of ['home', 'archive', 'favourites'] as const) out[view] = select(items, { view }).length;
+	for (const list of lists.items) out[list.id] = select(items, { view: 'home', list }).length;
+	return out;
+}
+
 export function findBookmark(id: string): Bookmark | undefined {
 	return byId.get(id);
 }

@@ -24,7 +24,7 @@
 	import { navigate, route } from '../lib/router.svelte';
 	import { setSessionHint } from '../lib/session';
 	import type { List } from '../../shared/schemas';
-	import { clearCache, lists, setInList, startSync } from '../lib/store.svelte';
+	import { clearCache, lists, setInList, sidebarCounts, startSync } from '../lib/store.svelte';
 	import { toast } from '../lib/toast.svelte';
 	import { isNewer, latestRelease, UPSTREAM, type Release } from '../lib/update';
 	import BookmarkGrid from './BookmarkGrid.svelte';
@@ -37,6 +37,10 @@
 	const view = $derived(pages[route.path] ?? 'home');
 	const listId = $derived(route.path.startsWith('/dashboard/lists/') ? decodeURIComponent(route.path.slice('/dashboard/lists/'.length)) : '');
 	const currentList = $derived(lists.items.find((l) => l.id === listId) ?? null);
+	// Every sidebar entry shows its count, 0 included. Mid-download only the server's manual-list counts are known.
+	const counts = $derived(sidebarCounts());
+	const countOf = (key: string, fallback?: number) => counts?.[key] ?? fallback ?? '';
+	const count = 'text-xs tabular-nums text-muted-foreground';
 	const REPO = `https://github.com/${UPSTREAM}`;
 
 	function read(key: string) {
@@ -170,8 +174,8 @@
 	}
 
 	const nav = [
-		{ path: '/dashboard', label: 'Home', icon: House },
-		{ path: '/dashboard/archive', label: 'Archive', icon: Archive },
+		{ path: '/dashboard', label: 'Home', icon: House, view: 'home' },
+		{ path: '/dashboard/archive', label: 'Archive', icon: Archive, view: 'archive' },
 	];
 	const isMac = navigator.platform.toLowerCase().includes('mac');
 	const item = 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors';
@@ -201,7 +205,7 @@
 	<nav class="mt-5 grid gap-0.5">
 		{#each nav as n (n.path)}
 			<a href={n.path} onclick={(e) => (e.preventDefault(), go(n.path))} title={n.label} class="{item} {mini ? 'justify-center px-0' : ''} {route.path === n.path && !query ? 'bg-muted font-medium text-foreground' : idle}">
-				<n.icon class="size-4 shrink-0" />{#if !mini}{n.label}{/if}
+				<n.icon class="size-4 shrink-0" />{#if !mini}<span class="flex-1">{n.label}</span><span class={count}>{countOf(n.view)}</span>{/if}
 			</a>
 		{/each}
 	</nav>
@@ -220,7 +224,7 @@
 		title="Favourites"
 		class="{item} {mini ? 'justify-center px-0' : ''} {route.path === '/dashboard/favourites' && !query ? 'bg-muted font-medium text-foreground' : idle}"
 	>
-		<span class="w-4 shrink-0 text-center text-base leading-none">⭐</span>{#if !mini}Favourites{/if}
+		<span class="w-4 shrink-0 text-center text-base leading-none">⭐</span>{#if !mini}<span class="flex-1">Favourites</span><span class={count}>{countOf('favourites')}</span>{/if}
 	</a>
 	<div class="grid min-h-0 gap-0.5 overflow-y-auto">
 		{#each tree as { list, depth } (list.id)}
@@ -242,7 +246,7 @@
 					<span class="w-4 shrink-0 text-center text-base leading-none">{list.icon || (list.kind === 'smart' ? '🔎' : '📁')}</span>
 					{#if !mini}
 						<span class="min-w-0 flex-1 truncate">{list.name}</span>
-						{#if list.kind === 'manual' && list.itemCount}<span class="text-xs text-muted-foreground group-hover:invisible">{list.itemCount}</span>{/if}
+						<span class="{count} group-hover:invisible">{countOf(list.id, list.kind === 'manual' ? list.itemCount : undefined)}</span>
 					{/if}
 				</a>
 				{#if !mini}
