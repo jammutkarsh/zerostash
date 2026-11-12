@@ -114,9 +114,11 @@
 		</div>
 		<div class="grid min-w-0 flex-1 grid-cols-1 gap-0.5">
 			{#if bookmark.type === 'link'}
-				<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="line-clamp-2 text-sm font-medium break-words hover:underline sm:truncate">{bookmark.title || bookmark.url}</a>
+				<h3 class="line-clamp-2 text-sm font-medium break-words sm:truncate">
+					<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="hover:underline">{bookmark.title || bookmark.url}</a>
+				</h3>
 			{:else}
-				<p class="line-clamp-2 text-sm font-medium break-words sm:truncate">{bookmark.title || bookmark.text}</p>
+				<h3 class="line-clamp-2 text-sm font-medium break-words sm:truncate">{bookmark.title || bookmark.text}</h3>
 			{/if}
 			{@render meta()}
 		</div>
@@ -125,7 +127,7 @@
 {:else}
 	<article data-entry={index} draggable="true" {ondragstart} class="group/card rounded-lg border bg-card shadow-sm transition-shadow hover:shadow-md {focused ? 'ring-2 ring-accent' : ''}">
 		{#if showImage}
-			<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="block overflow-hidden rounded-t-lg" tabindex="-1" draggable="false">
+			<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="block overflow-hidden rounded-t-lg" tabindex="-1" aria-hidden="true" draggable="false">
 				<img src={bookmark.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (imageFailed = true)} class="max-h-56 w-full bg-muted object-cover" />
 			</a>
 		{:else if loadingPreview}
@@ -133,14 +135,14 @@
 		{/if}
 		<div class="grid grid-cols-1 gap-1.5 px-3.5 pt-3 pb-2">
 			{#if bookmark.type === 'link'}
-				<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="line-clamp-3 text-[15px] leading-snug font-semibold break-words hover:underline">
-					{bookmark.title || bookmark.url}
-				</a>
+				<h3 class="line-clamp-3 text-[15px] leading-snug font-semibold break-words">
+					<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="hover:underline">{bookmark.title || bookmark.url}</a>
+				</h3>
 				{#if bookmark.description}
 					<p class="line-clamp-3 text-sm leading-relaxed text-muted-foreground">{bookmark.description}</p>
 				{/if}
 			{:else}
-				{#if bookmark.title}<p class="font-semibold">{bookmark.title}</p>{/if}
+				{#if bookmark.title}<h3 class="font-semibold">{bookmark.title}</h3>{/if}
 				<p class="line-clamp-[12] text-sm leading-relaxed break-words whitespace-pre-wrap">{bookmark.text}</p>
 			{/if}
 			{#if bookmark.note}

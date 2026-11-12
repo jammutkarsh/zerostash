@@ -379,6 +379,8 @@
 						</button>
 					{/if}
 				</div>
+			{:else}
+				<h1 class="sr-only">{view === 'favourites' ? 'Favourites' : view === 'archive' ? 'Archive' : 'Home'}</h1>
 			{/if}
 			{#key `${view}|${query}|${listId}|${currentList?.terms.join('\u0000') ?? ''}`}
 				<BookmarkGrid {view} {query} {listId} {layout} />
