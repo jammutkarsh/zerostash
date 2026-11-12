@@ -18,10 +18,16 @@
 		secret = s.secret;
 		autoSave = s.autoSave;
 		previewsAllowed = await chrome.permissions.contains(ALL_URLS);
+		// Show where things stand without making people press "Save & test" to find out.
+		if (serverUrl && secret) await check(false);
 	});
 
 	async function connect(e: SubmitEvent) {
 		e.preventDefault();
+		await check(true);
+	}
+
+	async function check(save: boolean) {
 		busy = true;
 		status = null;
 		try {
@@ -34,16 +40,18 @@
 			await server.me({ serverUrl: origin, secret: secret.trim() }).catch(() => {
 				throw new Error("The server rejected that secret. Use the value of ZEROSTASH_SECRET.");
 			});
-			await saveSettings({ serverUrl: origin, secret: secret.trim() });
-			serverUrl = origin;
-			await chrome.runtime.sendMessage({ type: 'settings-changed' });
+			if (save) {
+				await saveSettings({ serverUrl: origin, secret: secret.trim() });
+				serverUrl = origin;
+				await chrome.runtime.sendMessage({ type: 'settings-changed' });
+			}
 			const drift =
 				health.apiVersion > API_VERSION
 					? ' Your server is newer than this extension — update the extension.'
 					: health.apiVersion < API_VERSION
 						? ' Your server is older than this extension — sync your fork to update it.'
 						: '';
-			status = { ok: !drift, text: `Connected to Zerostash ${health.version}.${drift}` };
+			status = { ok: !drift, text: `Connected to Zerostash ${health.version} at ${new URL(origin).host}.${drift}` };
 		} catch (err) {
 			status = { ok: false, text: err instanceof Error ? err.message : String(err) };
 		} finally {
@@ -104,7 +112,7 @@
 
 	<div class="grid gap-6 rounded-xl border bg-card p-5">
 		<form onsubmit={connect} class="grid gap-4">
-			<h2 class="font-semibold">Server</h2>
+			<h2 class="text-base font-semibold">Server</h2>
 			<label class="grid gap-1.5 font-medium">
 				Server URL
 				<input bind:value={serverUrl} required placeholder="https://zerostash.you.workers.dev" class="rounded-md border bg-background px-3 py-2 font-normal outline-none focus:ring-2 focus:ring-accent" />
@@ -128,12 +136,13 @@
 
 		<section class="grid gap-3 border-t pt-6">
 			<div class="relative flex items-center gap-1">
-				<h2 class="font-semibold">Link previews (recommended)</h2>
+				<h2 class="text-base font-semibold">Link previews (recommended)</h2>
 				{@render tip(
 					'previews-tip',
 					'Links you save from the web app, imports, RSS or the right-click menu get their title and image fetched by this browser — it follows redirects and opens pages that block servers. This needs access to all sites; it is only used to read page headers for your bookmarks. Without it, your server fetches previews instead (slower, and some sites block it).',
 				)}
 			</div>
+			<p class="-mt-1 text-muted-foreground">Lets this browser fetch titles and images, so sites that block servers still get previews. Needs access to all sites; it only reads page headers.</p>
 			{#if previewsAllowed}
 				<p class="text-green-700 dark:text-green-400">Allowed ✓</p>
 				<div class="flex items-center gap-3">
@@ -146,7 +155,7 @@
 		</section>
 
 		<section class="grid gap-3 border-t pt-6">
-			<h2 class="font-semibold">Toolbar button</h2>
+			<h2 class="text-base font-semibold">Toolbar button</h2>
 			<label class="flex items-center gap-2">
 				<input type="checkbox" bind:checked={autoSave} onchange={(e) => saveSettings({ autoSave: e.currentTarget.checked })} />
 				Save the page as soon as I click the toolbar button
