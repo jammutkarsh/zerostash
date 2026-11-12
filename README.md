@@ -16,6 +16,11 @@ Fork the repo, connect it to Cloudflare, set one secret. Full guide: **[Deploy o
 
 Updating later: [Upgrading Zerostash](docs/deployment/upgrading.md).
 
+## Browser extension
+
+- **Chrome, Edge, Brave:** [Zerostash on the Chrome Web Store](https://chromewebstore.google.com/detail/zerostash-%E2%80%93-bookmarks-on/jpoallbklhamdjpnhciegolbjbnncmai?authuser=0&hl=en)
+- **Firefox:** `zerostash-firefox.xpi` from the [latest release](https://github.com/jammutkarsh/zerostash/releases/latest) ([how to install](docs/deployment/workers.md#5-install-the-browser-extension))
+
 ## Develop
 
 ```sh

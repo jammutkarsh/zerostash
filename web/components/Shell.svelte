@@ -277,14 +277,14 @@
 						Zerostash <b class="text-foreground">v{release.version}</b> is out. This server runs <b class="text-foreground">v{pkg.version}</b>.
 					</p>
 					<a href={release.url} target="_blank" rel="noopener" onclick={close} role="menuitem" class="{item} {idle}">What's new</a>
-					<a href="{REPO}#keep-your-server-up-to-date" target="_blank" rel="noopener" onclick={close} role="menuitem" class="{item} {idle}">How to update</a>
+					<a href="{REPO}/blob/main/docs/deployment/upgrading.md" target="_blank" rel="noopener" onclick={close} role="menuitem" class="{item} {idle}">How to update</a>
 				{/snippet}
 			</Menu>
 		{/if}
 		<Menu label="Resources" buttonClass="{item} {mini ? 'justify-center px-0' : ''} {idle}">
 			{#snippet trigger()}<LifeBuoy class="size-4 shrink-0" />{#if !mini}Resources{/if}{/snippet}
 			{#snippet children(close)}
-				<a href="{REPO}#connect-the-extension" target="_blank" rel="noopener" onclick={close} role="menuitem" class="{item} {idle}">
+				<a href="https://chromewebstore.google.com/detail/zerostash-%E2%80%93-bookmarks-on/jpoallbklhamdjpnhciegolbjbnncmai?authuser=0&hl=en" target="_blank" rel="noopener" onclick={close} role="menuitem" class="{item} {idle}">
 					<Download class="size-4" />Get the browser extension
 				</a>
 				<a href="/api-docs" target="_blank" onclick={close} role="menuitem" class="{item} {idle}"><Braces class="size-4" />API documentation</a>

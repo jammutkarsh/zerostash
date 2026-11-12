@@ -49,7 +49,7 @@ To use your own domain, add it under the Worker's **Settings → Domains & Route
 
 ## 5. Install the browser extension
 
-- **Chrome, Edge, Brave:** install [Zerostash from the Chrome Web Store](https://chromewebstore.google.com/detail/jpoallbklhamdjpnhciegolbjbnncmai).
+- **Chrome, Edge, Brave:** install [Zerostash from the Chrome Web Store](https://chromewebstore.google.com/detail/zerostash-%E2%80%93-bookmarks-on/jpoallbklhamdjpnhciegolbjbnncmai?authuser=0&hl=en).
 - **Firefox:** download `zerostash-firefox.xpi` from the [latest release](https://github.com/jammutkarsh/zerostash/releases/latest). Open `about:debugging` → **This Firefox** → **Load Temporary Add-on**, and pick the file. Firefox removes temporary add-ons when it restarts, so you'll need to load it again after a restart.
 
 In the extension's settings, enter your **Server** URL and your **Secret**, then click **Allow link previews**. This lets your browser fetch titles and images for what you save.
