@@ -19,6 +19,7 @@
 	}: { bookmark: Bookmark; index: number; focused?: boolean; layout?: 'masonry' | 'list' } = $props();
 
 	let imageFailed = $state(false);
+	let faviconFailed = $state(false);
 	let copied = $state(false);
 	const domain = $derived(bookmark.url ? new URL(bookmark.url).hostname.replace(/^www\./, '') : null);
 	const fullDate = $derived(new Date(bookmark.createdAt).toLocaleString());
@@ -105,8 +106,10 @@
 				<img src={bookmark.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (imageFailed = true)} class="size-full object-cover" />
 			{:else if bookmark.type === 'text'}
 				<StickyNote class="size-5 text-muted-foreground" />
-			{:else if bookmark.faviconUrl}
-				<img src={bookmark.faviconUrl} alt="" class="size-6" referrerpolicy="no-referrer" />
+			{:else if bookmark.faviconUrl && !faviconFailed}
+				<img src={bookmark.faviconUrl} alt="" class="size-6" referrerpolicy="no-referrer" onerror={() => (faviconFailed = true)} />
+			{:else if domain}
+				<span aria-hidden="true" class="text-lg font-semibold text-muted-foreground uppercase">{domain[0]}</span>
 			{/if}
 		</div>
 		<div class="grid min-w-0 flex-1 grid-cols-1 gap-0.5">
