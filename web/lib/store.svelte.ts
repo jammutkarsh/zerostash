@@ -1,238 +1,154 @@
-// Client cache so pages feel instant:
-// - every view renders from cache first (persisted to localStorage across reloads);
-// - delta sync keeps it current: `pull()` asks GET /changes for what changed since the last
-//   sync and folds it into every cached view, on dashboard open, on tab focus and every two
-//   minutes. A quiet library costs ~0 rows read per poll instead of a page per view;
-// - searches and smart lists match on text the delta can't evaluate, so those re-fetch
-//   their first page when shown;
-// - favourite/archive/delete/list changes update the screen immediately and sync behind
-//   the scenes, rolling back with a toast if the server refuses.
+// Local-first store: the browser keeps a copy of every bookmark, so views, lists, smart lists
+// and search are worked out here, instantly, without asking the server.
+// - The copy lives in IndexedDB (idb.ts) and loads on start.
+// - First visit: the screen's own first page comes straight from the server (`peek`) while
+//   every bookmark downloads in the background, Home and Archive in parallel, newest first,
+//   one request per page so each stays inside the Worker's 10 ms CPU budget.
+// - Delta sync (`pull`: GET /changes) keeps the copy current on open, on tab focus, when the
+//   network comes back and every two minutes. When the server answers `reset` (first visit,
+//   offline for 30+ days, 100+ changes), the download runs again with the old copy on screen.
+// - Favourite/archive/delete/list changes show immediately and sync behind the scenes,
+//   rolling back with a toast if the server refuses.
+// ponytail: everything sits in memory and every view is a filter over all of it; fine to
+// ~20k bookmarks. Past that, query IndexedDB by index instead.
 import type { Bookmark, CreateList, List, PatchList } from '../../shared/schemas';
-import { api, type View } from './api';
+import { api, ApiError, type View } from './api';
+import * as idb from './idb';
+import { byNewest, select } from './match';
 import { toast, undoToast } from './toast.svelte';
 
-export interface Feed {
-	view: View;
-	q: string;
-	listId: string;
-	items: Bookmark[];
-	cursor: string | null;
-	done: boolean;
-	loading: boolean;
-	error: string;
-	fetchedAt: number;
-}
+/** `version` bumps on every change to the bookmarks; `complete` = the whole library is here. */
+export const sync = $state({ version: 0, ready: false, complete: false, error: '' });
+export const lists = $state<{ items: List[] }>({ items: [] });
 
-const STORAGE_KEY = 'zs_cache_v2';
-const LISTS_KEY = 'zs_lists_v2'; // v2: smart lists have `terms` instead of `query`
-const SINCE_KEY = 'zs_since'; // GET /changes cursor; saved with the cache it describes
-const PERSIST_LIMIT = 60; // per view; enough for an instant first screen
-const VIEWS: View[] = ['home', 'favourites', 'archive'];
+// Bookmarks are plain objects, replaced on every change and never mutated in place.
+const byId = new Map<string, Bookmark>();
+let since: number | undefined;
 
-export const feeds = $state<Record<string, Feed>>(restore());
-export const lists = $state<{ items: List[] }>({ items: restoreLists() });
+// Older versions kept a partial cache here; it's superseded by IndexedDB.
+try {
+	for (const key of ['zs_cache_v2', 'zs_lists_v2', 'zs_since', 'zs_cache_v1', 'zs_lists_v1']) localStorage.removeItem(key);
+} catch {}
 
-let since = readSince();
-
-export const feedKey = (view: View, q = '', listId = '') => (listId ? `list:${listId}` : q ? `search:${q}` : view);
-
-function blank(view: View, q: string, listId: string): Feed {
-	return { view, q, listId, items: [], cursor: null, done: false, loading: false, error: '', fetchedAt: 0 };
-}
-
-function restore(): Record<string, Feed> {
-	try {
-		const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Record<string, Pick<Feed, 'items' | 'cursor' | 'done'>>;
-		const out: Record<string, Feed> = {};
-		for (const view of VIEWS) {
-			const f = saved[view];
-			// Cached data may predate a field the UI now relies on; a bad cache must never blank the page.
-			if (f && Array.isArray(f.items)) out[view] = { ...blank(view, '', ''), ...f, items: f.items.map((b) => ({ ...b, listIds: Array.isArray(b.listIds) ? b.listIds : [] })) };
-		}
-		return out;
-	} catch {
-		return {};
+const hydrated = idb.load().then(({ bookmarks, meta }) => {
+	// Anything the server sent while this loaded is at least as new: keep it.
+	for (const b of bookmarks) {
+		const mine = byId.get(b.id);
+		if (!mine || mine.updatedAt < b.updatedAt) byId.set(b.id, b);
 	}
-}
+	if (!lists.items.length && meta.lists) lists.items = meta.lists;
+	since = meta.since;
+	sync.complete = since !== undefined;
+	sync.ready = true;
+	sync.version++;
+});
 
-function readSince(): number | undefined {
-	try {
-		const n = Number(localStorage.getItem(SINCE_KEY));
-		return n > 0 ? n : undefined;
-	} catch {
-		return undefined;
+let sorted: Bookmark[] = [];
+let sortedAt = -1;
+function all(): Bookmark[] {
+	if (sortedAt !== sync.version) {
+		sorted = [...byId.values()].sort(byNewest);
+		sortedAt = sync.version;
 	}
+	return sorted;
 }
 
-function restoreLists(): List[] {
-	try {
-		const saved = JSON.parse(localStorage.getItem(LISTS_KEY) ?? '[]') as List[];
-		return Array.isArray(saved) ? saved.map((l) => ({ ...l, terms: Array.isArray(l.terms) ? l.terms : [] })) : [];
-	} catch {
-		return [];
+/** What a view, list or search shows, newest first. Reactive: re-runs when bookmarks or lists change. */
+export function viewItems(view: View, q = '', listId = ''): Bookmark[] {
+	const list = listId ? (lists.items.find((l) => l.id === listId) ?? { id: listId, kind: 'manual' as const, terms: [] }) : undefined;
+	return select(all(), { view, q, list });
+}
+
+export function findBookmark(id: string): Bookmark | undefined {
+	return byId.get(id);
+}
+
+// ---- persistence ----
+
+const dirty = new Set<string>();
+const gone = new Set<string>();
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+function persistSoon() {
+	clearTimeout(saveTimer);
+	saveTimer = setTimeout(flush, 300);
+}
+
+function flush() {
+	clearTimeout(saveTimer);
+	const put = [...dirty].flatMap((id) => byId.get(id) ?? []);
+	const del = [...gone];
+	dirty.clear();
+	gone.clear();
+	// The cursor is saved only once the copy is whole, so an interrupted download starts over.
+	void idb.save(put, del, { since: sync.complete ? since : undefined, lists: $state.snapshot(lists.items) });
+}
+
+function changed() {
+	sync.version++;
+	persistSoon();
+}
+
+function put(b: Bookmark) {
+	if (pendingDeletes.has(b.id)) return;
+	byId.set(b.id, b);
+	dirty.add(b.id);
+	gone.delete(b.id);
+}
+
+function forget(id: string): boolean {
+	if (!byId.delete(id)) return false;
+	dirty.delete(id);
+	gone.add(id);
+	return true;
+}
+
+/** Server data: overwrites the local copy only if newer, so a late reply can't undo a fresh edit. */
+function merge(items: Bookmark[]) {
+	let n = 0;
+	for (const b of items) {
+		const mine = byId.get(b.id);
+		if (mine && mine.updatedAt >= b.updatedAt) continue;
+		put(b);
+		n++;
 	}
+	if (n) changed();
 }
 
-const cursorOf = (b: Bookmark) => `${b.createdAt}_${b.id}`;
-const newerThan = (a: Bookmark, b: Bookmark) => a.createdAt > b.createdAt || (a.createdAt === b.createdAt && a.id > b.id);
-
-let persistTimer: ReturnType<typeof setTimeout> | undefined;
-function persist() {
-	clearTimeout(persistTimer);
-	persistTimer = setTimeout(() => {
-		const out: Record<string, unknown> = {};
-		for (const view of VIEWS) {
-			const f = feeds[view];
-			if (!f) continue;
-			const items = f.items.slice(0, PERSIST_LIMIT);
-			// A truncated list must not claim it's complete, or "load more" would stop.
-			out[view] = { items, cursor: items.length < f.items.length ? cursorOf(items.at(-1)!) : f.cursor, done: f.done && items.length === f.items.length };
-		}
-		try {
-			localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
-			localStorage.setItem(LISTS_KEY, JSON.stringify(lists.items));
-			if (since) localStorage.setItem(SINCE_KEY, String(since));
-		} catch {}
-	}, 300);
+/** A bookmark this page just saved or changed: always wins. */
+export function upsert(b: Bookmark) {
+	put(b);
+	changed();
 }
 
 /** Wipe everything (sign-out, expired session): bookmarks shouldn't outlive the session. */
 export function clearCache() {
-	for (const key of Object.keys(feeds)) delete feeds[key];
+	byId.clear();
+	dirty.clear();
+	gone.clear();
+	clearTimeout(saveTimer);
 	lists.items = [];
 	since = undefined;
-	try {
-		localStorage.removeItem(STORAGE_KEY);
-		localStorage.removeItem(LISTS_KEY);
-		localStorage.removeItem(SINCE_KEY);
-		localStorage.removeItem('zs_cache_v1'); // older cache formats
-		localStorage.removeItem('zs_lists_v1');
-	} catch {}
+	sync.complete = false;
+	sync.version++;
+	void idb.wipe();
 }
 
-export function ensureFeed(view: View, q = '', listId = ''): Feed {
-	const key = feedKey(view, q, listId);
-	// Re-read after assigning: $state stores a reactive proxy, not the object we passed in.
-	if (!feeds[key]) feeds[key] = blank(view, q, listId);
-	return feeds[key];
-}
-
-const fetchPage = async (feed: Feed, cursor?: string) => {
-	const page = await api.list({ view: feed.view, cursor, q: feed.q || undefined, list: feed.listId || undefined });
-	return { ...page, items: page.items.filter((b) => !pendingDeletes.has(b.id)) };
-};
-
-export async function loadMore(feed: Feed) {
-	if (feed.loading || feed.done) return;
-	feed.loading = true;
-	try {
-		const page = await fetchPage(feed, feed.cursor ?? undefined);
-		const seen = new Set(feed.items.map((b) => b.id));
-		feed.items.push(...page.items.filter((b) => !seen.has(b.id)));
-		feed.cursor = page.nextCursor;
-		feed.done = !page.nextCursor;
-		feed.fetchedAt = Date.now();
-		feed.error = '';
-		persist();
-	} catch (e) {
-		feed.error = e instanceof Error ? e.message : String(e);
-	} finally {
-		feed.loading = false;
-	}
-}
-
-/**
- * Re-fetch the first page and merge it in: new and changed bookmarks appear, ones deleted
- * elsewhere disappear, and anything already loaded below the first page stays put.
- */
-export async function refresh(feed: Feed) {
-	if (feed.loading) return;
-	if (!feed.fetchedAt && !feed.items.length) return loadMore(feed);
-	try {
-		const page = await fetchPage(feed);
-		const fresh = page.items;
-		if (!page.nextCursor) {
-			feed.items = fresh;
-			feed.cursor = null;
-			feed.done = true;
-		} else {
-			const oldest = fresh.at(-1)!;
-			const ids = new Set(fresh.map((b) => b.id));
-			const tail = feed.items.filter((b) => !ids.has(b.id) && newerThan(oldest, b));
-			feed.items = [...fresh, ...tail];
-			if (!tail.length) {
-				feed.cursor = page.nextCursor;
-				feed.done = false;
-			}
-		}
-		feed.fetchedAt = Date.now();
-		feed.error = '';
-		persist();
-	} catch {
-		// Background sync is best-effort; the cached view stays usable.
-	}
-}
-
-function belongs(feed: Feed, b: Bookmark): boolean {
-	if (feed.listId) {
-		const list = lists.items.find((l) => l.id === feed.listId);
-		if (b.listIds.includes(feed.listId)) return true;
-		// Smart lists also show term matches, which only the server can decide: keep what's there.
-		return list?.kind === 'smart' && feed.items.some((x) => x.id === b.id);
-	}
-	if (feed.q) return feed.items.some((x) => x.id === b.id); // searches only update in place
-	return feed.view === 'favourites' ? b.favourited : feed.view === 'archive' ? b.archived : !b.archived;
-}
-
-/** Put a bookmark into every cached view it belongs to (and out of the ones it doesn't). */
-export function upsert(b: Bookmark) {
-	if (pendingDeletes.has(b.id)) return;
-	for (const feed of Object.values(feeds)) {
-		const i = feed.items.findIndex((x) => x.id === b.id);
-		if (!belongs(feed, b)) {
-			if (i !== -1) feed.items.splice(i, 1);
-			continue;
-		}
-		if (i !== -1) {
-			feed.items[i] = b;
-			continue;
-		}
-		const at = feed.items.findIndex((x) => newerThan(b, x));
-		if (at !== -1) feed.items.splice(at, 0, b);
-		else if (feed.done) feed.items.push(b); // older than everything loaded: only add if the list is complete
-	}
-	persist();
-}
-
-function drop(id: string) {
-	for (const feed of Object.values(feeds)) {
-		const i = feed.items.findIndex((x) => x.id === id);
-		if (i !== -1) feed.items.splice(i, 1);
-	}
-}
-
-export function findBookmark(id: string): Bookmark | undefined {
-	for (const feed of Object.values(feeds)) {
-		const b = feed.items.find((x) => x.id === id);
-		if (b) return b;
-	}
-}
+// ---- edits ----
 
 const short = (b: Bookmark) => (b.title || b.url || 'note').slice(0, 40);
 
 /** Optimistic favourite/archive toggle. Archiving moves the card out of view, so it gets an Undo toast. */
 export async function toggle(id: string, field: 'favourited' | 'archived') {
-	const before = findBookmark(id);
+	const before = byId.get(id);
 	if (!before) return;
-	const snapshot = $state.snapshot(before) as Bookmark;
-	const value = !snapshot[field];
+	const value = !before[field];
 	if (field === 'archived') {
-		// Undo works from the snapshot: once archived, the card may be in no cached view to find.
-		undoToast(value ? `Archived “${short(snapshot)}”.` : `Moved “${short(snapshot)}” back to Home.`, () =>
-			void setField({ ...snapshot, archived: value }, 'archived', !value),
+		undoToast(value ? `Archived “${short(before)}”.` : `Moved “${short(before)}” back to Home.`, () =>
+			void setField({ ...before, archived: value }, 'archived', !value),
 		);
 	}
-	await setField(snapshot, field, value);
+	await setField(before, field, value);
 }
 
 async function setField(before: Bookmark, field: 'favourited' | 'archived', value: boolean) {
@@ -251,16 +167,16 @@ const UNDO_MS = 5000;
 const pendingDeletes = new Map<string, { snapshot: Bookmark; timer: ReturnType<typeof setTimeout>; sent: boolean }>();
 addEventListener('pagehide', () => {
 	for (const id of pendingDeletes.keys()) void commitDelete(id, true);
+	flush();
 });
 
 /** Optimistic delete with an Undo toast. */
 export function remove(id: string) {
-	const before = findBookmark(id);
-	if (!before || pendingDeletes.has(id)) return;
-	const snapshot = $state.snapshot(before) as Bookmark;
-	drop(id);
+	const snapshot = byId.get(id);
+	if (!snapshot || pendingDeletes.has(id)) return;
+	forget(id);
 	bumpCounts(snapshot.listIds, -1);
-	persist();
+	changed();
 	pendingDeletes.set(id, { snapshot, timer: setTimeout(() => void commitDelete(id), UNDO_MS), sent: false });
 	undoToast(`Deleted “${short(snapshot)}”.`, () => undoDelete(id), UNDO_MS);
 }
@@ -292,89 +208,104 @@ async function commitDelete(id: string, keepalive = false) {
 
 // ---- lists ----
 
+const byName = (a: List, b: List) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+
 function bumpCounts(listIds: string[], delta: number) {
 	for (const l of lists.items) if (listIds.includes(l.id)) l.itemCount = Math.max(0, l.itemCount + delta);
 }
 
 export async function createList(input: CreateList): Promise<List> {
 	const list = await api.createList(input);
-	lists.items = [...lists.items, list].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-	persist();
+	lists.items = [...lists.items, list].sort(byName);
+	persistSoon();
 	return list;
 }
 
 export async function updateList(id: string, patch: PatchList): Promise<List> {
 	const list = await api.patchList(id, patch);
-	lists.items = lists.items.map((l) => (l.id === id ? list : l)).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-	if (patch.terms !== undefined) delete feeds[feedKey('home', '', id)]; // smart list's results changed
-	persist();
+	lists.items = lists.items.map((l) => (l.id === id ? list : l)).sort(byName);
+	persistSoon();
 	return list;
 }
 
 export async function deleteList(id: string) {
 	await api.deleteList(id);
 	lists.items = lists.items.filter((l) => l.id !== id).map((l) => (l.parentId === id ? { ...l, parentId: null } : l));
-	delete feeds[feedKey('home', '', id)];
-	for (const feed of Object.values(feeds)) {
-		for (const b of feed.items) if (b.listIds.includes(id)) b.listIds = b.listIds.filter((x) => x !== id);
-	}
-	persist();
+	for (const b of [...byId.values()]) if (b.listIds.includes(id)) put({ ...b, listIds: b.listIds.filter((x) => x !== id) });
+	changed();
 }
 
 /** Optimistic add/remove of a bookmark in a manual list. */
 export async function setInList(bookmarkId: string, listId: string, member: boolean) {
-	const before = findBookmark(bookmarkId);
+	const before = byId.get(bookmarkId);
 	if (!before || before.listIds.includes(listId) === member) return;
-	const snapshot = $state.snapshot(before);
-	upsert({ ...snapshot, listIds: member ? [...snapshot.listIds, listId] : snapshot.listIds.filter((x) => x !== listId) });
+	upsert({ ...before, listIds: member ? [...before.listIds, listId] : before.listIds.filter((x) => x !== listId) });
 	bumpCounts([listId], member ? 1 : -1);
 	try {
 		await (member ? api.addToList(listId, bookmarkId) : api.removeFromList(listId, bookmarkId));
 	} catch {
-		upsert(snapshot);
+		upsert(before);
 		bumpCounts([listId], member ? -1 : 1);
 		toast(`Couldn't ${member ? 'add to' : 'remove from'} the list. Undone.`);
 	}
 }
 
-// ---- delta sync ----
+// ---- sync ----
 
-/** Base views and manual lists stay current through `pull()`; searches and smart lists don't. */
-export function deltaKept(feed: Feed): boolean {
-	return !feed.q && lists.items.find((l) => l.id === feed.listId)?.kind !== 'smart';
+/**
+ * Until the whole library is here, ask the server for this screen's first page so it fills
+ * at once. Searches scan every row in D1, so callers debounce those.
+ */
+export async function peek(view: View, q = '', listId = '') {
+	await hydrated;
+	if (sync.complete) return;
+	try {
+		merge((await api.list({ view, q: q || undefined, list: listId || undefined })).items);
+	} catch {}
 }
 
-/** First sync, or too much changed: replace every cached view with its first page. */
-async function reload() {
-	for (const v of VIEWS) ensureFeed(v);
+/** Every bookmark, Home and Archive side by side, newest first: the screen fills top down. */
+async function download(cursor: number) {
+	const seen = new Set<string>();
 	await Promise.all(
-		Object.values(feeds).map(async (feed) => {
-			if (feed.loading) return;
-			const page = await fetchPage(feed);
-			Object.assign(feed, { items: page.items, cursor: page.nextCursor, done: !page.nextCursor, fetchedAt: Date.now(), error: '' });
+		(['home', 'archive'] as const).map(async (view) => {
+			let next: string | undefined;
+			do {
+				const page = await api.list({ view, cursor: next, limit: next ? 100 : 30 });
+				for (const b of page.items) seen.add(b.id);
+				merge(page.items);
+				next = page.nextCursor ?? undefined;
+			} while (next);
 		}),
 	);
+	// Deleted on the server while this browser wasn't syncing (its tombstone has expired):
+	// drop it, unless it changed after the download began.
+	let n = 0;
+	for (const b of [...byId.values()]) if (!seen.has(b.id) && b.updatedAt < cursor && forget(b.id)) n++;
+	if (n) changed();
 }
 
 let pulling: Promise<void> | undefined;
-/** Fetch what changed since the last sync and fold it into every cached view. */
+/** Fetch what changed since the last sync, or everything when the server says `reset`. */
 export function pull(): Promise<void> {
 	pulling ??= (async () => {
 		try {
+			await hydrated;
 			const res = await api.changes(since);
 			lists.items = res.lists;
-			if (res.reset) await reload();
-			for (const b of res.items) {
-				const mine = findBookmark(b.id);
-				// The cursor overlaps the last minute, and a PATCH reply may already be newer.
-				if (!mine || mine.updatedAt < b.updatedAt) upsert(b);
+			if (res.reset) {
+				await download(res.cursor);
+				sync.complete = true;
+			} else {
+				merge(res.items);
+				if (res.deleted.filter(forget).length) changed();
 			}
-			res.deleted.forEach(drop);
-			// Only advance once applied: a failed reload retries the reset next time.
+			// Only advance once applied: an interrupted download retries the reset next time.
 			since = res.cursor;
-			persist();
-		} catch {
-			// Best-effort; the cached views stay usable.
+			sync.error = '';
+			persistSoon();
+		} catch (e) {
+			sync.error = e instanceof ApiError ? e.message : "Can't reach the server right now.";
 		} finally {
 			pulling = undefined;
 		}
@@ -383,23 +314,19 @@ export function pull(): Promise<void> {
 }
 
 let syncing = false;
-/** Sync once, then keep the cache current. Call once per dashboard visit. */
-export function startSync(current: () => Feed) {
+/** Sync now, then keep the copy current. Call once per dashboard visit. */
+export function startSync() {
 	if (syncing) return () => {};
 	syncing = true;
-	const idle = (fn: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(fn) : setTimeout(fn, 200));
-	idle(() => void pull());
-	const sync = () => {
-		if (document.visibilityState !== 'visible') return;
-		void pull();
-		const feed = current();
-		if (!deltaKept(feed)) void refresh(feed);
-	};
-	const timer = setInterval(sync, 2 * 60_000);
-	document.addEventListener('visibilitychange', sync);
+	void pull();
+	const onVisible = () => document.visibilityState === 'visible' && void pull();
+	const timer = setInterval(onVisible, 2 * 60_000);
+	document.addEventListener('visibilitychange', onVisible);
+	addEventListener('online', onVisible);
 	return () => {
 		syncing = false;
 		clearInterval(timer);
-		document.removeEventListener('visibilitychange', sync);
+		document.removeEventListener('visibilitychange', onVisible);
+		removeEventListener('online', onVisible);
 	};
 }

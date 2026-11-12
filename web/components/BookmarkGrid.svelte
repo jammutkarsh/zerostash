@@ -2,25 +2,28 @@
 	import { onMount, tick } from 'svelte';
 	import type { Bookmark } from '../../shared/schemas';
 	import type { View } from '../lib/api';
-	import { deltaKept, ensureFeed, lists, loadMore, refresh, remove, toggle } from '../lib/store.svelte';
+	import { lists, peek, remove, sync, toggle, viewItems } from '../lib/store.svelte';
 	import { undoLast } from '../lib/toast.svelte';
 	import BookmarkCard from './BookmarkCard.svelte';
 	import QuickAdd from './QuickAdd.svelte';
 
-	// Keyed by view|query in Shell, so `feed` is fixed for this instance.
+	// Keyed by view|query|list in Shell, so these props are fixed for this instance.
 	let {
 		view,
 		query = '',
 		listId = '',
 		layout = 'masonry',
 	}: { view: View; query?: string; listId?: string; layout?: 'masonry' | 'list' } = $props();
-	// svelte-ignore state_referenced_locally
-	const feed = ensureFeed(view, query, listId);
 
 	let width = $state(0);
 	let focused = $state(-1);
 	let sentinel: HTMLDivElement;
 	let cards: Record<number, BookmarkCard> = {};
+
+	// Everything is local; only the number of cards in the DOM grows as you scroll.
+	const items = $derived(viewItems(view, query, listId));
+	const PAGE = 40;
+	let shown = $state(PAGE);
 
 	const showAdd = $derived(view === 'home' && !query && !listId);
 	const GAP = 16;
@@ -31,28 +34,36 @@
 	type Entry = { kind: 'add' } | { kind: 'bookmark'; bookmark: Bookmark };
 	const entries = $derived<Entry[]>([
 		...(showAdd ? [{ kind: 'add' } as const] : []),
-		...feed.items.map((bookmark) => ({ kind: 'bookmark' as const, bookmark })),
+		...items.slice(0, shown).map((bookmark) => ({ kind: 'bookmark' as const, bookmark })),
 	]);
 	// Round-robin into columns so the grid reads left to right, newest first.
 	const columns = $derived(
 		Array.from({ length: columnCount }, (_, c) => entries.map((entry, i) => ({ entry, i })).filter(({ i }) => i % columnCount === c)),
 	);
 
-	async function more() {
-		await loadMore(feed);
-		// IntersectionObserver only fires on changes: if this page didn't push the
-		// sentinel out of range (short notes, wide screens), keep loading.
-		await tick();
-		if (!feed.done && !feed.error && sentinel.getBoundingClientRect().top < innerHeight + 600) void more();
+	function more() {
+		if (shown < items.length) shown += PAGE;
 	}
 
+	// IntersectionObserver only fires on changes: if new cards didn't push the sentinel out of
+	// range (short notes, wide screens, bookmarks still downloading), keep adding.
+	$effect(() => {
+		void [shown, items.length];
+		void tick().then(() => {
+			if (sentinel && sentinel.getBoundingClientRect().top < innerHeight + 600) more();
+		});
+	});
+
 	onMount(() => {
-		// Cached data is already on screen. Delta sync keeps the main views and manual lists
-		// current; searches and smart lists re-run their first page quietly.
-		if (feed.items.length && !deltaKept(feed)) void refresh(feed);
+		// Until the whole library is downloaded, fetch this screen's first page from the server.
+		// Searches scan D1, so wait for a pause in typing (each keystroke remounts this grid).
+		const t = setTimeout(() => void peek(view, query, listId), query ? 300 : 0);
 		const io = new IntersectionObserver((e) => e[0].isIntersecting && more(), { rootMargin: '600px' });
 		io.observe(sentinel);
-		return () => io.disconnect();
+		return () => {
+			clearTimeout(t);
+			io.disconnect();
+		};
 	});
 
 	// ---- keyboard navigation (Karakeep's keys) ----
@@ -64,7 +75,7 @@
 		if (last < first) return;
 		focused = focused < first ? first : Math.min(last, Math.max(first, focused + delta));
 		void tick().then(() => document.querySelector(`[data-entry="${focused}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
-		if (focused > last - columnCount * 2) void more();
+		if (focused > last - columnCount * 2) more();
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -133,11 +144,11 @@
 </div>
 
 <div bind:this={sentinel} class="py-10 text-center text-sm text-muted-foreground">
-	{#if feed.error && !feed.items.length}
-		<span class="text-destructive">{feed.error}</span>
-	{:else if feed.loading && !feed.items.length}
-		Loading…
-	{:else if feed.done && !feed.items.length}
+	{#if !sync.ready}
+		<!-- The local copy loads in milliseconds; a "Loading…" flash would only add noise. -->
+	{:else if !items.length && !sync.complete}
+		{#if sync.error}<span class="text-destructive">{sync.error}</span>{:else}Loading…{/if}
+	{:else if !items.length}
 		{#if listId}
 			{lists.items.find((l) => l.id === listId)?.kind === 'smart'
 				? 'Nothing matches this smart list yet.'
@@ -145,5 +156,7 @@
 		{:else}
 			{query ? `No bookmarks match “${query}”.` : empty[view]}
 		{/if}
+	{:else if !sync.complete && shown >= items.length}
+		{sync.error ? '' : 'Loading more…'}
 	{/if}
 </div>

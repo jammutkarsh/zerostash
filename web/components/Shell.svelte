@@ -24,7 +24,7 @@
 	import { navigate, route } from '../lib/router.svelte';
 	import { setSessionHint } from '../lib/session';
 	import type { List } from '../../shared/schemas';
-	import { clearCache, ensureFeed, lists, setInList, startSync } from '../lib/store.svelte';
+	import { clearCache, lists, setInList, startSync } from '../lib/store.svelte';
 	import { toast } from '../lib/toast.svelte';
 	import { isNewer, latestRelease, UPSTREAM, type Release } from '../lib/update';
 	import BookmarkGrid from './BookmarkGrid.svelte';
@@ -53,9 +53,9 @@
 	}
 
 	let input = $state('');
-	let query = $state(''); // debounced copy of `input` that drives the grid
+	// Search runs in the browser over the local copy, so results update on every keystroke.
+	const query = $derived(input.trim());
 	let searchEl: HTMLInputElement;
-	let timer: ReturnType<typeof setTimeout>;
 	let dark = $state(document.documentElement.classList.contains('dark'));
 	let layout = $state<Layout>(read('layout') === 'list' ? 'list' : 'masonry');
 	let collapsed = $state(read('sidebar') === 'collapsed');
@@ -71,8 +71,8 @@
 		void latestRelease().then((latest) => {
 			if (latest && isNewer(latest.version, pkg.version)) update = latest;
 		});
-		// Prefetch views + lists once, then keep whatever is on screen fresh.
-		return startSync(() => ensureFeed(view, query, listId));
+		// Download the library (first visit) or what changed, then keep it current.
+		return startSync();
 	});
 
 	function openListDialog(list: List | null) {
@@ -113,23 +113,14 @@
 		toast(`Added to ${list.icon ? `${list.icon} ` : ''}${list.name}`, 2000);
 	}
 
-	// Search on Enter or after a 300 ms pause, never per keystroke (each search scans D1).
-	function oninput() {
-		clearTimeout(timer);
-		timer = setTimeout(() => (query = input.trim()), 300);
-	}
 	function onSearchKey(e: KeyboardEvent) {
-		if (e.key === 'Enter') {
-			clearTimeout(timer);
-			query = input.trim();
-		} else if (e.key === 'Escape') {
+		if (e.key === 'Escape') {
 			clearSearch();
 			searchEl.blur();
 		}
 	}
 	function clearSearch() {
-		clearTimeout(timer);
-		input = query = '';
+		input = '';
 	}
 
 	function onWindowKey(e: KeyboardEvent) {
@@ -338,7 +329,6 @@
 				<input
 					bind:this={searchEl}
 					bind:value={input}
-					{oninput}
 					onkeydown={onSearchKey}
 					type="search"
 					placeholder="Search"

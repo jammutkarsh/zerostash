@@ -29,7 +29,8 @@ export const api = {
 	login: (secret: string) => ok(v1.auth.login.$post({ json: { secret } })),
 	logout: () => ok(v1.auth.logout.$post()),
 	changes: (since?: number) => ok(v1.changes.$get({ query: { since: since?.toString() } })),
-	list: (o: { view: View; cursor?: string; q?: string; list?: string }) => ok(v1.bookmarks.$get({ query: { ...o, limit: '30' } })),
+	list: ({ limit = 30, ...o }: { view: View; cursor?: string; q?: string; list?: string; limit?: number }) =>
+		ok(v1.bookmarks.$get({ query: { ...o, limit: String(limit) } })),
 	get: (id: string) => ok(v1.bookmarks[':id'].$get({ param: { id } })),
 	create: (input: CreateBookmark) => ok(v1.bookmarks.$post({ json: input })),
 	patch: (id: string, patch: PatchBookmark) => ok(v1.bookmarks[':id'].$patch({ param: { id }, json: patch })),
