@@ -176,7 +176,7 @@
 		{ path: '/dashboard/archive', label: 'Archive', icon: Archive },
 	];
 	const isMac = navigator.platform.toLowerCase().includes('mac');
-	const item = 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors';
+	const item = 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors';
 	const idle = 'text-muted-foreground hover:bg-muted hover:text-foreground';
 </script>
 
@@ -222,7 +222,7 @@
 		title="Favourites"
 		class="{item} {mini ? 'justify-center px-0' : ''} {route.path === '/dashboard/favourites' && !query ? 'bg-muted font-medium text-foreground' : idle}"
 	>
-		<span class="w-4 shrink-0 text-center">⭐</span>{#if !mini}Favourites{/if}
+		<span class="w-4 shrink-0 text-center text-base leading-none">⭐</span>{#if !mini}Favourites{/if}
 	</a>
 	<div class="grid min-h-0 gap-0.5 overflow-y-auto">
 		{#each tree as { list, depth } (list.id)}
@@ -241,7 +241,7 @@
 					class="{item} {mini ? 'justify-center px-0' : ''} {active ? 'bg-muted font-medium text-foreground' : idle}"
 					style={mini ? '' : `padding-left: ${0.625 + depth * 0.875}rem`}
 				>
-					<span class="w-4 shrink-0 text-center">{list.icon || (list.kind === 'smart' ? '🔎' : '📁')}</span>
+					<span class="w-4 shrink-0 text-center text-base leading-none">{list.icon || (list.kind === 'smart' ? '🔎' : '📁')}</span>
 					{#if !mini}
 						<span class="min-w-0 flex-1 truncate">{list.name}</span>
 						{#if list.kind === 'manual' && list.itemCount}<span class="text-xs text-muted-foreground group-hover:invisible">{list.itemCount}</span>{/if}
