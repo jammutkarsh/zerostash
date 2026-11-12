@@ -65,7 +65,7 @@
 <main class="w-[340px] text-sm">
 	<header class="flex items-center gap-2 border-b bg-sidebar px-4 py-3">
 		<img src="/icons/icon32.png" alt="" class="size-5" />
-		<span class="font-bold tracking-tight">zerostash</span>
+		<span class="font-bold tracking-tight">Zerostash</span>
 		<button onclick={() => chrome.runtime.openOptionsPage()} title="Settings" class="ml-auto rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
 			<Settings class="size-4" />
 		</button>
@@ -74,7 +74,7 @@
 	<div class="p-4">
 		{#if ui.kind === 'loading' || ui.kind === 'saving'}
 			<p class="flex items-center justify-center gap-2 py-6 text-muted-foreground">
-				<LoaderCircle class="size-4 animate-spin" />{ui.kind === 'saving' ? 'Stashing…' : ''}
+				<LoaderCircle class="size-4 animate-spin" />{ui.kind === 'saving' ? 'Saving…' : ''}
 			</p>
 		{:else if ui.kind === 'setup'}
 			<p class="mb-1 font-semibold">Connect your server</p>
@@ -84,14 +84,14 @@
 			{#if ui.savable}
 				{@const tab = ui.tab}
 				<p class="mb-3 line-clamp-2 font-medium">{tab.title || tab.url}</p>
-				<button onclick={() => save(tab)} class="mb-2 w-full rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground">Stash this page</button>
+				<button onclick={() => save(tab)} class="mb-2 w-full rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground">Save this page</button>
 			{/if}
 			<button onclick={openApp} class="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 font-medium hover:bg-muted">
 				<ExternalLink class="size-4" />Open Zerostash
 			</button>
 		{:else if ui.kind === 'saved'}
 			{@const b = ui.bookmark}
-			<p class="mb-1 flex items-center gap-2 text-base font-semibold text-green-700 dark:text-green-400"><CircleCheck class="size-5" />Stashed</p>
+			<p class="mb-1 flex items-center gap-2 text-base font-semibold text-green-700 dark:text-green-400"><CircleCheck class="size-5" />Saved</p>
 			<p class="mb-3 line-clamp-2 text-muted-foreground">{b.title || b.url}</p>
 			<textarea
 				bind:value={note}

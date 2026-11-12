@@ -106,7 +106,7 @@
 					</div>
 					<div class="flex">
 						<div class="hidden w-28 shrink-0 space-y-1.5 border-r bg-sidebar p-3 text-[10px] sm:block">
-							<p class="mb-3 font-bold">zerostash</p>
+							<p class="mb-3 font-bold">Zerostash</p>
 							<p class="rounded bg-muted px-1.5 py-0.5 font-medium">Home</p>
 							<p class="px-1.5 text-muted-foreground">Archive</p>
 							<p class="px-1.5 pt-2 font-semibold text-muted-foreground">Lists</p>

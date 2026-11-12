@@ -195,7 +195,7 @@
 	<div class="flex items-center gap-2 {mini ? 'flex-col' : 'px-1'}">
 		<a href="/dashboard" onclick={(e) => (e.preventDefault(), go('/dashboard'))} class="flex items-center gap-2 px-1.5" title="Zerostash">
 			<img src="/favicon.svg" alt="" class="size-7" />
-			{#if !mini}<span class="text-lg font-bold tracking-tight">zerostash</span>{/if}
+			{#if !mini}<span class="text-lg font-bold tracking-tight">Zerostash</span>{/if}
 		</a>
 		<button
 			onclick={() => (drawer ? (drawer = false) : toggleSidebar())}
