@@ -117,7 +117,10 @@ export function ensureFeed(view: View, q = '', listId = ''): Feed {
 	return feeds[key];
 }
 
-const fetchPage = (feed: Feed, cursor?: string) => api.list({ view: feed.view, cursor, q: feed.q || undefined, list: feed.listId || undefined });
+const fetchPage = async (feed: Feed, cursor?: string) => {
+	const page = await api.list({ view: feed.view, cursor, q: feed.q || undefined, list: feed.listId || undefined });
+	return { ...page, items: page.items.filter((b) => !pendingDeletes.has(b.id)) };
+};
 
 export async function loadMore(feed: Feed) {
 	if (feed.loading || feed.done) return;
@@ -183,6 +186,7 @@ function belongs(feed: Feed, b: Bookmark): boolean {
 
 /** Put a bookmark into every cached view it belongs to (and out of the ones it doesn't). */
 export function upsert(b: Bookmark) {
+	if (pendingDeletes.has(b.id)) return;
 	for (const feed of Object.values(feeds)) {
 		const i = feed.items.findIndex((x) => x.id === b.id);
 		if (!belongs(feed, b)) {
@@ -229,19 +233,47 @@ export async function toggle(id: string, field: 'favourited' | 'archived') {
 	}
 }
 
-/** Optimistic delete. */
-export async function remove(id: string) {
+// Deletes wait out an undo window before reaching the server. Until then the bookmark is
+// hidden locally, and server pages and syncs must not bring it back.
+const UNDO_MS = 5000;
+const pendingDeletes = new Map<string, { snapshot: Bookmark; timer: ReturnType<typeof setTimeout>; sent: boolean }>();
+addEventListener('pagehide', () => {
+	for (const id of pendingDeletes.keys()) void commitDelete(id, true);
+});
+
+/** Optimistic delete with an Undo toast. */
+export function remove(id: string) {
 	const before = findBookmark(id);
-	if (!before) return;
-	const snapshot = $state.snapshot(before);
+	if (!before || pendingDeletes.has(id)) return;
+	const snapshot = $state.snapshot(before) as Bookmark;
 	drop(id);
 	bumpCounts(snapshot.listIds, -1);
 	persist();
+	pendingDeletes.set(id, { snapshot, timer: setTimeout(() => void commitDelete(id), UNDO_MS), sent: false });
+	toast(`Deleted “${(snapshot.title || snapshot.url || 'note').slice(0, 40)}”.`, UNDO_MS, { label: 'Undo', run: () => undoDelete(id) });
+}
+
+function undoDelete(id: string) {
+	const p = pendingDeletes.get(id);
+	if (!p || p.sent) return;
+	clearTimeout(p.timer);
+	pendingDeletes.delete(id);
+	upsert(p.snapshot);
+	bumpCounts(p.snapshot.listIds, 1);
+}
+
+async function commitDelete(id: string, keepalive = false) {
+	const p = pendingDeletes.get(id);
+	if (!p || p.sent) return;
+	p.sent = true;
+	clearTimeout(p.timer);
 	try {
-		await api.remove(id);
+		await api.remove(id, keepalive);
+		pendingDeletes.delete(id);
 	} catch {
-		upsert(snapshot);
-		bumpCounts(snapshot.listIds, 1);
+		pendingDeletes.delete(id);
+		upsert(p.snapshot);
+		bumpCounts(p.snapshot.listIds, 1);
 		toast("Couldn't delete. Restored.");
 	}
 }

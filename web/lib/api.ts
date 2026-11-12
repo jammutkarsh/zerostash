@@ -33,7 +33,8 @@ export const api = {
 	get: (id: string) => ok(v1.bookmarks[':id'].$get({ param: { id } })),
 	create: (input: CreateBookmark) => ok(v1.bookmarks.$post({ json: input })),
 	patch: (id: string, patch: PatchBookmark) => ok(v1.bookmarks[':id'].$patch({ param: { id }, json: patch })),
-	remove: (id: string) => ok(v1.bookmarks[':id'].$delete({ param: { id } })),
+	// keepalive lets a delete still pending when the tab closes reach the server.
+	remove: (id: string, keepalive = false) => ok(v1.bookmarks[':id'].$delete({ param: { id } }, keepalive ? { init: { keepalive } } : undefined)),
 	createList: (input: CreateList) => ok(v1.lists.$post({ json: input })),
 	patchList: (id: string, patch: PatchList) => ok(v1.lists[':id'].$patch({ param: { id }, json: patch })),
 	deleteList: (id: string) => ok(v1.lists[':id'].$delete({ param: { id } })),
