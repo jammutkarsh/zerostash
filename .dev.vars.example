@@ -1,4 +1,4 @@
-# Copy to .dev.vars for local dev. In production set with `wrangler secret put ZEROSTASH_SECRET`
-# (the Deploy button asks for it). Must be 32+ random characters: openssl rand -hex 32
+# Copy to .dev.vars for local dev. In production add it as a secret in your Worker's
+# Settings → Variables and Secrets. Must be 32+ random characters: openssl rand -hex 32
 # Left empty on purpose so a default can never be accepted as a real secret.
 ZEROSTASH_SECRET=

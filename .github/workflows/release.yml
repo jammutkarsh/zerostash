@@ -1,8 +1,9 @@
 name: Release
 
-# Push a tag like v0.2.0 to deploy that version to Cloudflare and publish a GitHub
-# release with the extension builds. The tag is the version: package.json is stamped
-# from it during the build, and the dashboard shows it (and offers it as an update).
+# Push a tag like v0.2.0 to publish a GitHub release with the extension builds.
+# Deploys don't happen here: Cloudflare Workers Builds deploys every push to main (and
+# applies database migrations). So bump "version" in package.json on main first; that
+# push deploys it, and this tag announces it (servers on older versions see an update notice).
 on:
   push:
     tags: ['v*.*.*']
@@ -17,38 +18,30 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
-      - name: Use the tag as the version
+      - name: Check the tag matches package.json
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          DEPLOYED=$(bun -e "console.log((await Bun.file('package.json').json()).version)")
+          if [ "$VERSION" != "$DEPLOYED" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match package.json ($DEPLOYED). Bump package.json on main, then tag that commit."
+            exit 1
+          fi
           # Browser stores only accept dotted numbers, so drop any -beta style suffix there.
           EXT_VERSION="${VERSION%%-*}"
           bun -e "
-            for (const [file, v] of [['package.json', '$VERSION'], ['extension/package.json', '$EXT_VERSION']]) {
-              const pkg = await Bun.file(file).json();
-              pkg.version = v;
-              await Bun.write(file, JSON.stringify(pkg, null, '\t') + '\n');
-            }"
+            const pkg = await Bun.file('extension/package.json').json();
+            pkg.version = '$EXT_VERSION';
+            await Bun.write('extension/package.json', JSON.stringify(pkg, null, '\t') + '\n');"
 
       - run: bun run types
       - run: bun run check
       - run: bun run --filter zerostash-extension check
       - run: bun run test
-
-      - name: Deploy to Cloudflare
-        if: env.CLOUDFLARE_API_TOKEN != ''
-        run: bun run deploy
-
-      - name: Skip deploy (no Cloudflare token)
-        if: env.CLOUDFLARE_API_TOKEN == ''
-        run: echo "::notice::CLOUDFLARE_API_TOKEN isn't set, so this release wasn't deployed. See README → Keep your server up to date."
 
       - run: bun run ext:zip
 

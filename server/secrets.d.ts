@@ -1,4 +1,4 @@
-// The login secret is set with `wrangler secret put` (or the Deploy button), never in config.
+// The login secret is set in the dashboard (or with `wrangler secret put`), never in config.
 // Declared here rather than via wrangler's `secrets.required`, which blocks the very first
 // deploy of a new Worker; without it the app deploys and shows its setup page instead.
 interface Env {

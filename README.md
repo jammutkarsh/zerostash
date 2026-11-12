@@ -6,8 +6,6 @@ No VPS, no Docker, no headless browser.
 
 > I didn't want to pay ₹600 a month for a server just to run Karakeep. Zerostash keeps the parts I use and runs for free.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/jammutkarsh/zerostash)
-
 ## What you get
 
 | Piece | What it does |
@@ -20,29 +18,32 @@ Status: early. Lists (manual, nested and smart) and search work today; tags, AI 
 
 ## Deploy
 
-> The command-line path below is tested. The Deploy button and fork + Workers Builds paths are not verified yet.
+Cloudflare builds and deploys your fork on every push to `main`, applying database migrations
+before the new code goes live. That is the only way to deploy: `bun run deploy` refuses to run
+anywhere but Cloudflare's build servers, so code can never ship without its migration.
 
-1. Click **Deploy to Cloudflare** above. Cloudflare copies this repo to your GitHub, creates the D1 database and deploys.
-2. When asked for `ZEROSTASH_SECRET`, paste a long random string (`openssl rand -hex 32`). It's your login.
-3. Open `https://<your-worker>/login` and sign in with that secret. The root URL shows the marketing page until this browser has signed in; the app lives at `/dashboard`.
+> Not yet verified end to end on a fresh account. Please open an issue if a step doesn't match.
 
-From the command line instead:
-
-```sh
-git clone https://github.com/jammutkarsh/zerostash && cd zerostash
-bun install
-npx wrangler login
-bun run deploy                             # builds, creates the database + queue, deploys, migrates
-openssl rand -hex 32 | npx wrangler secret put ZEROSTASH_SECRET   # keep a copy: it's your login
-```
+1. **Fork** [jammutkarsh/zerostash](https://github.com/jammutkarsh/zerostash/fork) on GitHub.
+2. In the Cloudflare dashboard, go to **Workers & Pages → Create application → GitHub** and pick your fork.
+   - Project name: `zerostash` (it must match `name` in `wrangler.jsonc`)
+   - Build command: `bun run build`
+   - Deploy command: `bun run deploy`
+3. **Save and Deploy.** The first build creates the D1 database and queue, deploys, and migrates the database.
+4. Add your login secret: open the Worker → **Settings → Variables and Secrets → Add** → type **Secret**,
+   name `ZEROSTASH_SECRET`, value from `openssl rand -hex 32`. Keep a copy: it's your login.
+5. Open `https://<your-worker>/login` and sign in with that secret. The root URL shows the marketing page
+   until this browser has signed in; the app lives at `/dashboard`.
 
 ## Keep your server up to date
 
 The dashboard shows your version in the sidebar and an **Update available** notice when a newer
-[release](https://github.com/jammutkarsh/zerostash/releases) is out.
+[release](https://github.com/jammutkarsh/zerostash/releases) is out. Click **Sync fork** on your
+GitHub fork: Cloudflare rebuilds, applies any new database migrations, then deploys.
 
-- **Deployed with the button or from a fork:** click **Sync fork** on your GitHub copy. If Workers Builds is connected, Cloudflare redeploys and the `deploy` script applies database migrations.
-- **Deploying on tags (this repo's flow):** add two repository secrets, `CLOUDFLARE_API_TOKEN` (a token from the *Edit Cloudflare Workers* template plus *D1: Edit* and *Queues: Edit*) and `CLOUDFLARE_ACCOUNT_ID`. Then `git tag v0.2.0 && git push origin v0.2.0` deploys that version and publishes a release with the extension zips.
+**Releasing (maintainers):** bump `version` in `package.json` on `main` (that push deploys it), then
+tag the same commit, e.g. `git tag v0.2.0 && git push origin v0.2.0`. The tag publishes a GitHub
+release with the extension zips; it fails if the tag and `package.json` disagree.
 
 ## Connect the extension
 

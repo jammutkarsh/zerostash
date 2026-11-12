@@ -11,7 +11,7 @@
 	"scripts": {
 		"dev": "bun scripts/openapi.ts && vite",
 		"build": "bun scripts/openapi.ts && vite build",
-		"deploy": "bun run build && (wrangler d1 migrations apply DB --remote || true) && wrangler deploy && wrangler d1 migrations apply DB --remote",
+		"deploy": "bun scripts/deploy.ts",
 		"db:migrate:local": "wrangler d1 migrations apply DB --local",
 		"types": "wrangler types server/worker-configuration.d.ts",
 		"check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.worker.json",
@@ -19,13 +19,6 @@
 		"smoke": "bun scripts/smoke.ts",
 		"ext:build": "bun run --filter zerostash-extension build",
 		"ext:zip": "bun run --filter zerostash-extension zip"
-	},
-	"cloudflare": {
-		"bindings": {
-			"ZEROSTASH_SECRET": {
-				"description": "Your login secret for the web app and the browser extension. Generate one with `openssl rand -hex 32` (at least 32 characters)."
-			}
-		}
 	},
 	"engines": {
 		"bun": ">=1.3"

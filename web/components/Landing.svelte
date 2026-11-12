@@ -5,7 +5,6 @@
 	import { navigate } from '../lib/router.svelte';
 
 	const REPO = 'https://github.com/jammutkarsh/zerostash';
-	const DEPLOY = `https://deploy.workers.cloudflare.com/?url=${REPO}`;
 
 	const features: { title: string; body: string; soon?: boolean }[] = [
 		{
@@ -56,8 +55,8 @@
 	];
 
 	const steps = [
-		{ icon: Rocket, title: 'Deploy', body: 'Click “Deploy to Cloudflare”. It copies the repo to your GitHub and creates the Worker and database.' },
-		{ icon: KeyRound, title: 'Set your secret', body: 'Paste a long random string as ZEROSTASH_SECRET. That is your login.' },
+		{ icon: Rocket, title: 'Fork and connect', body: 'Fork the repo and import it in Cloudflare (Workers & Pages → Create → GitHub). Every push to main deploys and updates the database.' },
+		{ icon: KeyRound, title: 'Set your secret', body: 'Add a long random string as the ZEROSTASH_SECRET secret in your Worker’s settings. That is your login.' },
 		{ icon: Puzzle, title: 'Connect the extension', body: 'Enter your Worker URL and the secret in the extension. Start saving.' },
 	];
 </script>
@@ -93,8 +92,8 @@
 					browser extension. No VPS, no Docker, no monthly bill.
 				</p>
 				<div class="mt-8 flex flex-wrap items-center gap-3">
-					<a href={DEPLOY}><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" class="h-10" /></a>
-					<a href={REPO} class="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-muted">View on GitHub</a>
+					<a href="{REPO}/fork" class="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">Fork on GitHub</a>
+					<a href="{REPO}#deploy" class="rounded-lg border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Setup guide</a>
 				</div>
 			</div>
 
