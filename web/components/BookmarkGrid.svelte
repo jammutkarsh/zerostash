@@ -24,7 +24,7 @@
 	const showAdd = $derived(view === 'home' && !query && !listId);
 	const GAP = 16;
 	const columnCount = $derived(
-		layout === 'list' ? (width >= 900 ? 2 : 1) : Math.min(5, Math.max(1, Math.floor((width + GAP) / (280 + GAP)))),
+		layout === 'list' ? 1 : Math.min(5, Math.max(1, Math.floor((width + GAP) / (280 + GAP)))),
 	);
 
 	type Entry = { kind: 'add' } | { kind: 'bookmark'; bookmark: Bookmark };
@@ -111,7 +111,7 @@
 
 <svelte:window {onkeydown} />
 
-<div bind:clientWidth={width} class="flex items-start gap-4">
+<div bind:clientWidth={width} class="flex items-start gap-4 {layout === 'list' ? 'mx-auto max-w-3xl' : ''}">
 	{#each columns as column, c (c)}
 		<div class="flex min-w-0 flex-1 flex-col {layout === 'list' ? 'gap-3' : 'gap-4'}">
 			{#each column as { entry, i } (entry.kind === 'add' ? 'add' : entry.bookmark.id)}

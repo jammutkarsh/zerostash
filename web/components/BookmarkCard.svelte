@@ -93,8 +93,14 @@
 {/snippet}
 
 {#if layout === 'list'}
-	<article data-entry={index} draggable="true" {ondragstart} class="group/card flex items-center gap-3 rounded-lg border bg-card p-2.5 shadow-sm transition-shadow {focused ? 'ring-2 ring-accent' : ''}">
-		<div class="grid size-12 shrink-0 place-items-center overflow-hidden rounded-md bg-muted {loadingPreview ? 'animate-pulse' : ''}">
+	<!-- Phones: actions drop below a 2-line title instead of squeezing it to a few characters. -->
+	<article
+		data-entry={index}
+		draggable="true"
+		{ondragstart}
+		class="group/card grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 rounded-lg border bg-card p-2.5 shadow-sm transition-shadow sm:grid-cols-[auto_minmax(0,1fr)_auto] {focused ? 'ring-2 ring-accent' : ''}"
+	>
+		<div class="row-span-2 grid size-12 shrink-0 place-items-center sm:row-span-1 overflow-hidden rounded-md bg-muted {loadingPreview ? 'animate-pulse' : ''}">
 			{#if showImage}
 				<img src={bookmark.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (imageFailed = true)} class="size-full object-cover" />
 			{:else if bookmark.type === 'text'}
@@ -105,9 +111,9 @@
 		</div>
 		<div class="grid min-w-0 flex-1 grid-cols-1 gap-0.5">
 			{#if bookmark.type === 'link'}
-				<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="truncate text-sm font-medium hover:underline">{bookmark.title || bookmark.url}</a>
+				<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="line-clamp-2 text-sm font-medium break-words hover:underline sm:truncate">{bookmark.title || bookmark.url}</a>
 			{:else}
-				<p class="truncate text-sm font-medium">{bookmark.title || bookmark.text}</p>
+				<p class="line-clamp-2 text-sm font-medium break-words sm:truncate">{bookmark.title || bookmark.text}</p>
 			{/if}
 			{@render meta()}
 		</div>
