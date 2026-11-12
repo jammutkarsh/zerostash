@@ -8,6 +8,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { Bookmark } from '../../shared/schemas';
 	import { remove, toggle } from '../lib/store.svelte';
+	import ListPicker from './ListPicker.svelte';
 	import { shortAge } from '../lib/time';
 
 	let {
@@ -32,6 +33,12 @@
 	}
 
 	const button = 'grid size-7 place-items-center rounded-md transition-colors hover:bg-muted';
+
+	// Drag a card onto a list in the sidebar to add it there.
+	function ondragstart(e: DragEvent) {
+		e.dataTransfer?.setData('application/x-zerostash-bookmark', bookmark.id);
+		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+	}
 </script>
 
 {#snippet actions()}
@@ -53,6 +60,7 @@
 		>
 			{#if bookmark.archived}<ArchiveRestore class="size-4" />{:else}<Archive class="size-4" />{/if}
 		</button>
+		<ListPicker {bookmark} buttonClass={button} />
 		{#if bookmark.url}
 			<button onclick={copyLink} aria-label="Copy link" title="Copy link (c)" class="{button} {copied ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground hover:text-foreground'}">
 				{#if copied}<Check class="size-4" />{:else}<Link class="size-4" />{/if}
@@ -80,7 +88,7 @@
 {/snippet}
 
 {#if layout === 'list'}
-	<article data-entry={index} class="flex items-center gap-3 rounded-lg border bg-card p-2.5 shadow-sm transition-shadow {focused ? 'ring-2 ring-accent' : ''}">
+	<article data-entry={index} draggable="true" {ondragstart} class="flex items-center gap-3 rounded-lg border bg-card p-2.5 shadow-sm transition-shadow {focused ? 'ring-2 ring-accent' : ''}">
 		<div class="grid size-12 shrink-0 place-items-center overflow-hidden rounded-md bg-muted {loadingPreview ? 'animate-pulse' : ''}">
 			{#if showImage}
 				<img src={bookmark.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (imageFailed = true)} class="size-full object-cover" />
@@ -101,13 +109,13 @@
 		{@render actions()}
 	</article>
 {:else}
-	<article data-entry={index} class="overflow-hidden rounded-lg border bg-card shadow-sm transition-shadow hover:shadow-md {focused ? 'ring-2 ring-accent' : ''}">
+	<article data-entry={index} draggable="true" {ondragstart} class="rounded-lg border bg-card shadow-sm transition-shadow hover:shadow-md {focused ? 'ring-2 ring-accent' : ''}">
 		{#if showImage}
-			<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="block" tabindex="-1">
+			<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="block overflow-hidden rounded-t-lg" tabindex="-1" draggable="false">
 				<img src={bookmark.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (imageFailed = true)} class="max-h-56 w-full bg-muted object-cover" />
 			</a>
 		{:else if loadingPreview}
-			<div class="h-28 animate-pulse bg-muted" title="Fetching preview…"></div>
+			<div class="h-28 animate-pulse rounded-t-lg bg-muted" title="Fetching preview…"></div>
 		{/if}
 		<div class="grid grid-cols-1 gap-1.5 px-3.5 pt-3 pb-2">
 			{#if bookmark.type === 'link'}

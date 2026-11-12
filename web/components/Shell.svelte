@@ -12,6 +12,8 @@
 	import Moon from '@lucide/svelte/icons/moon';
 	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
 	import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import Plus from '@lucide/svelte/icons/plus';
 	import Rows3 from '@lucide/svelte/icons/rows-3';
 	import Search from '@lucide/svelte/icons/search';
 	import Sun from '@lucide/svelte/icons/sun';
@@ -21,15 +23,20 @@
 	import { api, type View } from '../lib/api';
 	import { navigate, route } from '../lib/router.svelte';
 	import { setSessionHint } from '../lib/session';
-	import { clearCache } from '../lib/store.svelte';
+	import type { List } from '../../shared/schemas';
+	import { clearCache, ensureFeed, lists, setInList, startSync } from '../lib/store.svelte';
+	import { toast } from '../lib/toast.svelte';
 	import { isNewer, latestRelease, UPSTREAM, type Release } from '../lib/update';
 	import BookmarkGrid from './BookmarkGrid.svelte';
+	import ListDialog from './ListDialog.svelte';
 	import Menu from './Menu.svelte';
 	import ShortcutsDialog from './ShortcutsDialog.svelte';
 
 	type Layout = 'masonry' | 'list';
 	const pages: Record<string, View> = { '/dashboard': 'home', '/dashboard/archive': 'archive', '/dashboard/favourites': 'favourites' };
 	const view = $derived(pages[route.path] ?? 'home');
+	const listId = $derived(route.path.startsWith('/dashboard/lists/') ? decodeURIComponent(route.path.slice('/dashboard/lists/'.length)) : '');
+	const currentList = $derived(lists.items.find((l) => l.id === listId) ?? null);
 	const REPO = `https://github.com/${UPSTREAM}`;
 
 	function read(key: string) {
@@ -56,10 +63,55 @@
 	let shortcuts = $state(false);
 	let update = $state<Release | null>(null);
 
-	onMount(async () => {
-		const latest = await latestRelease();
-		if (latest && isNewer(latest.version, pkg.version)) update = latest;
+	let listDialog = $state(false);
+	let editing = $state<List | null>(null);
+	let dropTarget = $state('');
+
+	onMount(() => {
+		void latestRelease().then((latest) => {
+			if (latest && isNewer(latest.version, pkg.version)) update = latest;
+		});
+		// Prefetch views + lists once, then keep whatever is on screen fresh.
+		return startSync(() => ensureFeed(view, query, listId));
 	});
+
+	function openListDialog(list: List | null) {
+		editing = list;
+		listDialog = true;
+	}
+
+	/** Sidebar order: parents first, children indented under them. */
+	const tree = $derived.by(() => {
+		const out: { list: List; depth: number }[] = [];
+		const seen = new Set<string>();
+		const walk = (parent: string | null, depth: number) => {
+			for (const list of lists.items) {
+				if ((list.parentId ?? null) !== parent || seen.has(list.id)) continue;
+				seen.add(list.id);
+				out.push({ list, depth });
+				walk(list.id, depth + 1);
+			}
+		};
+		walk(null, 0);
+		for (const list of lists.items) if (!seen.has(list.id)) out.push({ list, depth: 0 }); // orphans
+		return out;
+	});
+
+	const DRAG_TYPE = 'application/x-zerostash-bookmark';
+	function ondragover(e: DragEvent, list: List) {
+		if (list.kind !== 'manual' || !e.dataTransfer?.types.includes(DRAG_TYPE)) return;
+		e.preventDefault();
+		e.dataTransfer.dropEffect = 'copy';
+		dropTarget = list.id;
+	}
+	function ondrop(e: DragEvent, list: List) {
+		const id = e.dataTransfer?.getData(DRAG_TYPE);
+		dropTarget = '';
+		if (!id || list.kind !== 'manual') return;
+		e.preventDefault();
+		void setInList(id, list.id, true);
+		toast(`Added to ${list.icon ? `${list.icon} ` : ''}${list.name}`, 2000);
+	}
 
 	// Search on Enter or after a 300 ms pause, never per keystroke (each search scans D1).
 	function oninput() {
@@ -130,6 +182,7 @@
 
 <svelte:window onkeydown={onWindowKey} />
 <ShortcutsDialog bind:open={shortcuts} />
+<ListDialog bind:open={listDialog} list={editing} onCreated={(l) => go(`/dashboard/lists/${l.id}`)} />
 
 {#snippet sidebar(mini: boolean)}
 	<div class="flex items-center gap-2 {mini ? 'flex-col' : 'px-1'}">
@@ -155,7 +208,14 @@
 		{/each}
 	</nav>
 	<div class="my-4 border-t {mini ? 'mx-1' : 'mx-2.5'}"></div>
-	{#if !mini}<p class="mb-1 px-2.5 text-xs font-semibold text-muted-foreground">Lists</p>{/if}
+	{#if !mini}
+		<div class="mb-1 flex items-center px-2.5">
+			<p class="text-xs font-semibold text-muted-foreground">Lists</p>
+			<button onclick={() => openListDialog(null)} aria-label="New list" title="New list" class="ml-auto rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+				<Plus class="size-4" />
+			</button>
+		</div>
+	{/if}
 	<a
 		href="/dashboard/favourites"
 		onclick={(e) => (e.preventDefault(), go('/dashboard/favourites'))}
@@ -164,6 +224,45 @@
 	>
 		<span class="w-4 shrink-0 text-center">⭐</span>{#if !mini}Favourites{/if}
 	</a>
+	<div class="grid min-h-0 gap-0.5 overflow-y-auto">
+		{#each tree as { list, depth } (list.id)}
+			{@const active = listId === list.id && !query}
+			<div
+				class="group relative rounded-md {dropTarget === list.id ? 'bg-accent/20 ring-1 ring-accent' : ''}"
+				ondragover={(e) => ondragover(e, list)}
+				ondragleave={() => dropTarget === list.id && (dropTarget = '')}
+				ondrop={(e) => ondrop(e, list)}
+				role="listitem"
+			>
+				<a
+					href="/dashboard/lists/{list.id}"
+					onclick={(e) => (e.preventDefault(), go(`/dashboard/lists/${list.id}`))}
+					title={list.kind === 'smart' ? `${list.name} (smart list: “${list.query}”)` : list.name}
+					class="{item} {mini ? 'justify-center px-0' : ''} {active ? 'bg-muted font-medium text-foreground' : idle}"
+					style={mini ? '' : `padding-left: ${0.625 + depth * 0.875}rem`}
+				>
+					<span class="w-4 shrink-0 text-center">{list.icon || (list.kind === 'smart' ? '🔎' : '📁')}</span>
+					{#if !mini}
+						<span class="min-w-0 flex-1 truncate">{list.name}</span>
+						{#if list.kind === 'manual' && list.itemCount}<span class="text-xs text-muted-foreground group-hover:invisible">{list.itemCount}</span>{/if}
+					{/if}
+				</a>
+				{#if !mini}
+					<button
+						onclick={() => openListDialog(list)}
+						aria-label="Edit {list.name}"
+						title="Edit list"
+						class="absolute top-1/2 right-1 hidden -translate-y-1/2 rounded p-1 text-muted-foreground group-hover:block hover:bg-background hover:text-foreground"
+					>
+						<Pencil class="size-3.5" />
+					</button>
+				{/if}
+			</div>
+		{/each}
+		{#if mini}
+			<button onclick={() => openListDialog(null)} title="New list" class="{item} justify-center px-0 {idle}"><Plus class="size-4" /></button>
+		{/if}
+	</div>
 
 	<div class="mt-auto grid gap-0.5">
 		{#if update}
@@ -242,9 +341,24 @@
 		<main class="mx-auto max-w-[1600px] p-3 md:p-6">
 			{#if query}
 				<h1 class="mb-4 text-sm text-muted-foreground">Results for <span class="font-medium text-foreground">“{query}”</span></h1>
+			{:else if listId}
+				<div class="mb-4 flex items-center gap-2">
+					<h1 class="flex min-w-0 items-center gap-2 text-xl font-semibold">
+						<span>{currentList?.icon || (currentList?.kind === 'smart' ? '🔎' : '📁')}</span>
+						<span class="truncate">{currentList?.name ?? 'List'}</span>
+					</h1>
+					{#if currentList?.kind === 'smart'}
+						<span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Smart · “{currentList.query}”</span>
+					{/if}
+					{#if currentList}
+						<button onclick={() => openListDialog(currentList)} aria-label="Edit list" title="Edit list" class="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+							<Pencil class="size-4" />
+						</button>
+					{/if}
+				</div>
 			{/if}
-			{#key `${view}|${query}`}
-				<BookmarkGrid {view} {query} {layout} />
+			{#key `${view}|${query}|${listId}|${currentList?.query ?? ''}`}
+				<BookmarkGrid {view} {query} {listId} {layout} />
 			{/key}
 		</main>
 	</div>

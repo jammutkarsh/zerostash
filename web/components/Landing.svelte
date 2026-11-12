@@ -30,8 +30,12 @@
 			soon: true,
 		},
 		{
-			title: 'Lists, search and imports',
-			body: 'Smart lists, a search language, rules, RSS auto-save, and one-step import from Karakeep or your browser bookmarks.',
+			title: 'Lists and search',
+			body: 'Nested lists with emoji, smart lists that fill themselves from a search, drag-and-drop, and instant search across everything you saved.',
+		},
+		{
+			title: 'Imports, RSS and rules',
+			body: 'One-step import from Karakeep or your browser bookmarks, RSS auto-save, and rules that tag and file new bookmarks for you.',
 			soon: true,
 		},
 	];

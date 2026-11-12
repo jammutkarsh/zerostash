@@ -23,10 +23,13 @@ interface BookmarkRow {
 	og_source: Bookmark['ogSource'];
 	created_at: number;
 	updated_at: number;
+	list_ids: string; // JSON array
 }
 
-const COLUMNS = `id, type, url, title, description, image_url, site_name, favicon_url, text, note, summary,
-	favourited, archived, source, ai_status, og_status, og_source, created_at, updated_at`;
+// Always selected FROM bookmarks b. list_ids reads bookmark_lists by its primary-key prefix.
+const COLUMNS = `b.id, b.type, b.url, b.title, b.description, b.image_url, b.site_name, b.favicon_url, b.text, b.note,
+	b.summary, b.favourited, b.archived, b.source, b.ai_status, b.og_status, b.og_source, b.created_at, b.updated_at,
+	(SELECT json_group_array(list_id) FROM bookmark_lists WHERE bookmark_id = b.id) AS list_ids`;
 
 // Must mirror OG_SOURCE_RANK in shared/og.ts.
 const OG_RANK_SQL = `CASE og_source WHEN 'server' THEN 1 WHEN 'feed' THEN 2 WHEN 'extension' THEN 3
@@ -55,6 +58,7 @@ function toBookmark(r: BookmarkRow): Bookmark {
 		aiStatus: r.ai_status,
 		ogStatus: r.og_status,
 		ogSource: r.og_source,
+		listIds: JSON.parse(r.list_ids ?? '[]') as string[],
 		createdAt: r.created_at,
 		updatedAt: r.updated_at,
 	};
@@ -72,7 +76,7 @@ function decodeCursor(cursor: string | undefined): [number, string] {
 }
 
 export async function getBookmark(db: D1Database, id: string): Promise<Bookmark | null> {
-	const row = await db.prepare(`SELECT ${COLUMNS} FROM bookmarks WHERE id = ?`).bind(id).first<BookmarkRow>();
+	const row = await db.prepare(`SELECT ${COLUMNS} FROM bookmarks b WHERE b.id = ?`).bind(id).first<BookmarkRow>();
 	return row ? toBookmark(row) : null;
 }
 
@@ -80,25 +84,32 @@ const SEARCH_COLUMNS = ['title', 'url', 'description', 'site_name', 'note', 'tex
 
 export async function listBookmarks(
 	db: D1Database,
-	q: { cursor?: string; limit: number; view: 'home' | 'archive' | 'favourites'; q?: string },
+	q: { cursor?: string; limit: number; view: 'home' | 'archive' | 'favourites'; q?: string; list?: { id: string; kind: 'manual' | 'smart'; query: string | null } },
 ): Promise<BookmarkPage> {
 	const [at, id] = decodeCursor(q.cursor);
+	let from = 'bookmarks b';
 	let where: string;
 	const params: (string | number)[] = [];
-	if (q.q) {
+	const search = q.list?.kind === 'smart' ? q.list.query : q.q;
+	if (q.list?.kind === 'manual') {
+		// Rows read = members of the list, via the bookmark_lists_list index.
+		from = 'bookmark_lists bl JOIN bookmarks b ON b.id = bl.bookmark_id';
+		where = 'bl.list_id = ?';
+		params.push(q.list.id);
+	} else if (search) {
 		// Search covers every bookmark, archived included (Karakeep behaviour). Full scan by
 		// design: ~1 row read per bookmark per search, fine at personal scale.
-		const like = `%${q.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-		where = `(${SEARCH_COLUMNS.map((c) => `${c} LIKE ? ESCAPE '\\'`).join(' OR ')})`;
+		const like = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+		where = `(${SEARCH_COLUMNS.map((c) => `b.${c} LIKE ? ESCAPE '\\'`).join(' OR ')})`;
 		params.push(...SEARCH_COLUMNS.map(() => like));
 	} else {
 		// Each branch matches an index exactly: bookmarks_home / bookmarks_fav.
-		where = q.view === 'favourites' ? 'favourited = 1' : `archived = ${q.view === 'archive' ? 1 : 0}`;
+		where = q.view === 'favourites' ? 'b.favourited = 1' : `b.archived = ${q.view === 'archive' ? 1 : 0}`;
 	}
 	const { results } = await db
 		.prepare(
-			`SELECT ${COLUMNS} FROM bookmarks WHERE ${where} AND (created_at, id) < (?, ?)
-			 ORDER BY created_at DESC, id DESC LIMIT ?`,
+			`SELECT ${COLUMNS} FROM ${from} WHERE ${where} AND (b.created_at, b.id) < (?, ?)
+			 ORDER BY b.created_at DESC, b.id DESC LIMIT ?`,
 		)
 		.bind(...params, at, id, q.limit + 1)
 		.all<BookmarkRow>();
@@ -174,7 +185,11 @@ export async function patchBookmark(db: D1Database, id: string, patch: PatchBook
 }
 
 export async function deleteBookmark(db: D1Database, id: string): Promise<boolean> {
-	const res = await db.prepare('DELETE FROM bookmarks WHERE id = ?').bind(id).run();
+	// Keep list counts right: decrement before the cascade removes the memberships.
+	const [, res] = await db.batch([
+		db.prepare('UPDATE lists SET item_count = item_count - 1 WHERE id IN (SELECT list_id FROM bookmark_lists WHERE bookmark_id = ?)').bind(id),
+		db.prepare('DELETE FROM bookmarks WHERE id = ?').bind(id),
+	]);
 	return res.meta.changes > 0;
 }
 

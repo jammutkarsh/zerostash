@@ -16,7 +16,7 @@ No VPS, no Docker, no headless browser.
 | **Background service** | One Cloudflare Worker + D1: the REST API ([OpenAPI spec](/openapi.json) at `/openapi.json` on your server), auth, and a 5-minute cron that fills in link previews. |
 | **Browser extension** | One click saves the current page with its title, description and image. Right-click to save links or selected text. It also fetches previews for links you save elsewhere. |
 
-Status: early. Tags, lists, AI summaries/tagging, search, import/export, RSS and rules are on the way.
+Status: early. Lists (manual, nested and smart) and search work today; tags, AI summaries/tagging, import/export, RSS and rules are on the way.
 
 ## Deploy
 

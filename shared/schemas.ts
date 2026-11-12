@@ -16,6 +16,9 @@ export const LIMITS = {
 	siteName: 200,
 	tagsPerBookmark: 50,
 	tagName: 64,
+	listName: 100,
+	listIcon: 16,
+	listQuery: 200,
 	pageSize: 100,
 	ogBatch: 20,
 } as const;
@@ -72,6 +75,8 @@ export const ListQuery = z.object({
 	view: z.enum(['home', 'archive', 'favourites']).default('home'),
 	// Free-text search across all bookmarks (any view). ponytail: LIKE scan; FTS5 later.
 	q: z.string().trim().max(200).optional(),
+	// Bookmarks in one list (overrides `view`; a smart list runs its saved search).
+	list: z.string().max(64).optional(),
 });
 
 export const Bookmark = z.object({
@@ -92,10 +97,48 @@ export const Bookmark = z.object({
 	aiStatus: z.enum(['none', 'pending', 'done', 'failed', 'skipped']),
 	ogStatus: z.enum(['pending', 'done', 'server_failed', 'failed']),
 	ogSource: z.enum(['tab', 'bookmarklet', 'extension', 'feed', 'server']).nullable(),
+	listIds: z.array(z.string()),
 	createdAt: z.number(),
 	updatedAt: z.number(),
 });
 export type Bookmark = z.infer<typeof Bookmark>;
+
+export const ListKind = z.enum(['manual', 'smart']);
+
+export const List = z.object({
+	id: z.string(),
+	name: z.string(),
+	icon: z.string().nullable(),
+	parentId: z.string().nullable(),
+	kind: ListKind,
+	query: z.string().nullable(), // smart lists: the saved search
+	itemCount: z.number(), // manual lists only; 0 for smart lists
+	createdAt: z.number(),
+});
+export type List = z.infer<typeof List>;
+
+const listName = z.string().trim().min(1).max(LIMITS.listName);
+const listIcon = z.string().trim().max(LIMITS.listIcon);
+const listQuery = z.string().trim().min(1).max(LIMITS.listQuery);
+
+export const CreateList = z
+	.object({
+		name: listName,
+		icon: listIcon.optional(),
+		parentId: z.string().max(64).nullable().optional(),
+		kind: ListKind.default('manual'),
+		query: listQuery.optional(),
+	})
+	.refine((l) => l.kind === 'manual' || !!l.query, { message: 'smart lists need a `query`' });
+export type CreateList = z.input<typeof CreateList>;
+
+export const PatchList = z.object({
+	name: listName.optional(),
+	icon: listIcon.nullable().optional(),
+	parentId: z.string().max(64).nullable().optional(),
+	query: listQuery.optional(),
+});
+export type PatchList = z.infer<typeof PatchList>;
 
 export const BookmarkPage = z.object({ items: z.array(Bookmark), nextCursor: z.string().nullable() });
 export type BookmarkPage = z.infer<typeof BookmarkPage>;

@@ -2,21 +2,26 @@
 	import { onMount, tick } from 'svelte';
 	import type { Bookmark } from '../../shared/schemas';
 	import type { View } from '../lib/api';
-	import { ensureFeed, loadMore, refresh, remove, startSync, toggle } from '../lib/store.svelte';
+	import { ensureFeed, lists, loadMore, refresh, remove, toggle } from '../lib/store.svelte';
 	import BookmarkCard from './BookmarkCard.svelte';
 	import QuickAdd from './QuickAdd.svelte';
 
 	// Keyed by view|query in Shell, so `feed` is fixed for this instance.
-	let { view, query = '', layout = 'masonry' }: { view: View; query?: string; layout?: 'masonry' | 'list' } = $props();
+	let {
+		view,
+		query = '',
+		listId = '',
+		layout = 'masonry',
+	}: { view: View; query?: string; listId?: string; layout?: 'masonry' | 'list' } = $props();
 	// svelte-ignore state_referenced_locally
-	const feed = ensureFeed(view, query);
+	const feed = ensureFeed(view, query, listId);
 
 	let width = $state(0);
 	let focused = $state(-1);
 	let sentinel: HTMLDivElement;
 	let cards: Record<number, BookmarkCard> = {};
 
-	const showAdd = $derived(view === 'home' && !query);
+	const showAdd = $derived(view === 'home' && !query && !listId);
 	const GAP = 16;
 	const columnCount = $derived(
 		layout === 'list' ? (width >= 900 ? 2 : 1) : Math.min(5, Math.max(1, Math.floor((width + GAP) / (280 + GAP)))),
@@ -45,8 +50,7 @@
 		if (feed.items.length) void refresh(feed);
 		const io = new IntersectionObserver((e) => e[0].isIntersecting && more(), { rootMargin: '600px' });
 		io.observe(sentinel);
-		const stop = startSync(() => feed);
-		return () => (io.disconnect(), stop());
+		return () => io.disconnect();
 	});
 
 	// ---- keyboard navigation (Karakeep's keys) ----
@@ -126,6 +130,12 @@
 	{:else if feed.loading && !feed.items.length}
 		Loading…
 	{:else if feed.done && !feed.items.length}
-		{query ? `No bookmarks match “${query}”.` : empty[view]}
+		{#if listId}
+			{lists.items.find((l) => l.id === listId)?.kind === 'smart'
+				? 'Nothing matches this smart list yet.'
+				: 'This list is empty. Add bookmarks with the list button on a card, or drag a card onto the list in the sidebar.'}
+		{:else}
+			{query ? `No bookmarks match “${query}”.` : empty[view]}
+		{/if}
 	{/if}
 </div>

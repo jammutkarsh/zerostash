@@ -20,7 +20,13 @@ test('session cookie round-trips, expires, and dies with the secret', async () =
 	expect(await verifySession(cookie, secret, now)).toBe(true);
 	expect(await verifySession(cookie, 'b'.repeat(40), now)).toBe(false); // rotated secret
 	expect(await verifySession(cookie, secret, now + 31 * 24 * 3600 * 1000)).toBe(false); // expired
-	expect(await verifySession(cookie.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A')), secret, now)).toBe(false); // tampered
+	// Tamper with a middle character of the MAC: the last base64url char only carries 4 bits,
+	// so swapping it can decode to the same bytes and make this check flaky.
+	const [exp, mac] = cookie.split('.');
+	const mid = Math.floor(mac.length / 2);
+	const flipped = `${exp}.${mac.slice(0, mid)}${mac[mid] === 'A' ? 'B' : 'A'}${mac.slice(mid + 1)}`;
+	expect(await verifySession(flipped, secret, now)).toBe(false); // tampered MAC
+	expect(await verifySession(`${Number(exp) + 1}.${mac}`, secret, now)).toBe(false); // tampered expiry
 	expect(await verifySession(undefined, secret, now)).toBe(false);
 	expect(await verifySession('garbage', secret, now)).toBe(false);
 });

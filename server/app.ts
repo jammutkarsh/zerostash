@@ -8,14 +8,18 @@ import {
 	Bookmark,
 	BookmarkPage,
 	CreateBookmark,
+	CreateList,
 	Health,
 	LIMITS,
+	List,
 	ListQuery,
 	OgPatch,
 	PatchBookmark,
+	PatchList,
 } from '../shared/schemas';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, secretConfigured, secretMatches, signSession, verifySession } from './auth';
 import { applyOg, createBookmark, deleteBookmark, getBookmark, listBookmarks, markOgFailed, needsOg, patchBookmark } from './bookmarks';
+import { addToList, allLists, createList, deleteList, getList, ListError, patchList, removeFromList } from './lists';
 import privacyPolicy from './privacy-policy.md?raw';
 
 type AppEnv = { Bindings: Env };
@@ -61,6 +65,7 @@ app.use('/api/v1/*', async (c, next) => {
 });
 
 app.onError((err, c) => {
+	if (err instanceof ListError) return c.json({ error: err.status === 404 ? 'not_found' : 'invalid_request', message: err.message }, err.status);
 	const message = String(err);
 	if (/daily row (read|write) limit/i.test(message)) {
 		return c.json({ error: 'daily_limit', message: "Cloudflare's free daily database limit is used up; it resets at 00:00 UTC." }, 503);
@@ -131,11 +136,17 @@ const routes = app
 			method: 'get',
 			path: '/api/v1/bookmarks',
 			summary: 'List bookmarks',
-			description: 'Newest first, cursor-paginated. `view` picks home/favourites/archive; `q` searches every bookmark.',
+			description:
+				'Newest first, cursor-paginated. `view` picks home/favourites/archive; `q` searches every bookmark; `list` shows one list (a smart list runs its saved search).',
 			request: { query: ListQuery },
-			responses: { 200: json(BookmarkPage, 'A page of bookmarks, newest first'), ...errors },
+			responses: { 200: json(BookmarkPage, 'A page of bookmarks, newest first'), 404: json(ApiError, 'List not found'), ...errors },
 		}),
-		async (c) => c.json(await listBookmarks(c.env.DB, c.req.valid('query')), 200),
+		async (c) => {
+			const query = c.req.valid('query');
+			const list = query.list ? await getList(c.env.DB, query.list) : undefined;
+			if (query.list && !list) return c.json({ error: 'not_found', message: 'List not found.' }, 404);
+			return c.json(await listBookmarks(c.env.DB, { ...query, list: list ?? undefined }), 200);
+		},
 	)
 	.openapi(
 		createRoute({
@@ -225,6 +236,79 @@ const routes = app
 			responses: { 204: { description: 'Deleted' }, 404: json(ApiError, 'Not found'), ...errors },
 		}),
 		async (c) => ((await deleteBookmark(c.env.DB, c.req.valid('param').id)) ? c.body(null, 204) : c.json({ error: 'not_found' }, 404)),
+	)
+	.openapi(
+		createRoute({
+			method: 'get',
+			path: '/api/v1/lists',
+			summary: 'All lists',
+			description: 'Every list, sorted by name. Nesting comes from `parentId`; `itemCount` is kept up to date for manual lists.',
+			responses: { 200: json(z.object({ items: z.array(List) }), 'Lists'), ...errors },
+		}),
+		async (c) => c.json({ items: await allLists(c.env.DB) }, 200),
+	)
+	.openapi(
+		createRoute({
+			method: 'post',
+			path: '/api/v1/lists',
+			summary: 'Create a list',
+			description: 'A manual list holds the bookmarks you add to it; a smart list (`kind: "smart"`) shows whatever matches its `query`.',
+			request: { body: { content: { 'application/json': { schema: CreateList } }, required: true } },
+			responses: { 201: json(List, 'Created'), ...errors },
+		}),
+		async (c) => c.json(await createList(c.env.DB, c.req.valid('json')), 201),
+	)
+	.openapi(
+		createRoute({
+			method: 'patch',
+			path: '/api/v1/lists/{id}',
+			summary: 'Update a list',
+			description: 'Rename, change the icon, move under another list (`parentId`, or null for the top level), or change a smart list\'s query.',
+			request: { params: IdParam, body: { content: { 'application/json': { schema: PatchList } }, required: true } },
+			responses: { 200: json(List, 'Updated'), 404: json(ApiError, 'Not found'), ...errors },
+		}),
+		async (c) => c.json(await patchList(c.env.DB, c.req.valid('param').id, c.req.valid('json')), 200),
+	)
+	.openapi(
+		createRoute({
+			method: 'delete',
+			path: '/api/v1/lists/{id}',
+			summary: 'Delete a list',
+			description: 'Removes the list only; its bookmarks stay. Child lists move to the top level.',
+			request: { params: IdParam },
+			responses: { 204: { description: 'Deleted' }, 404: json(ApiError, 'Not found'), ...errors },
+		}),
+		async (c) => ((await deleteList(c.env.DB, c.req.valid('param').id)) ? c.body(null, 204) : c.json({ error: 'not_found' }, 404)),
+	)
+	.openapi(
+		createRoute({
+			method: 'put',
+			path: '/api/v1/lists/{id}/bookmarks/{bookmarkId}',
+			summary: 'Add a bookmark to a list',
+			description: 'Manual lists only. Adding a bookmark that is already in the list does nothing.',
+			request: { params: z.object({ id: z.string().max(64), bookmarkId: z.string().max(64) }) },
+			responses: { 204: { description: 'Added' }, 404: json(ApiError, 'Not found'), ...errors },
+		}),
+		async (c) => {
+			const { id, bookmarkId } = c.req.valid('param');
+			await addToList(c.env.DB, id, bookmarkId);
+			return c.body(null, 204);
+		},
+	)
+	.openapi(
+		createRoute({
+			method: 'delete',
+			path: '/api/v1/lists/{id}/bookmarks/{bookmarkId}',
+			summary: 'Remove a bookmark from a list',
+			description: 'The bookmark itself stays.',
+			request: { params: z.object({ id: z.string().max(64), bookmarkId: z.string().max(64) }) },
+			responses: { 204: { description: 'Removed' }, 404: json(ApiError, 'Not found'), ...errors },
+		}),
+		async (c) => {
+			const { id, bookmarkId } = c.req.valid('param');
+			await removeFromList(c.env.DB, id, bookmarkId);
+			return c.body(null, 204);
+		},
 	);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));

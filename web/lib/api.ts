@@ -1,4 +1,4 @@
-import type { Bookmark, BookmarkPage, CreateBookmark, PatchBookmark } from '../../shared/schemas';
+import type { Bookmark, BookmarkPage, CreateBookmark, CreateList, List, PatchBookmark, PatchList } from '../../shared/schemas';
 import { redirect } from './router.svelte';
 import { setSessionHint } from './session';
 import { clearCache } from './store.svelte';
@@ -38,16 +38,23 @@ export const api = {
 	me: () => request<{ ok: true }>('/me'),
 	login: (secret: string) => request<void>('/auth/login', json('POST', { secret })),
 	logout: () => request<void>('/auth/logout', { method: 'POST' }),
-	list: (view: View, cursor?: string, q?: string) => {
-		const params = new URLSearchParams({ view, limit: '30' });
-		if (cursor) params.set('cursor', cursor);
-		if (q) params.set('q', q);
+	list: (o: { view: View; cursor?: string; q?: string; list?: string }) => {
+		const params = new URLSearchParams({ view: o.view, limit: '30' });
+		if (o.cursor) params.set('cursor', o.cursor);
+		if (o.q) params.set('q', o.q);
+		if (o.list) params.set('list', o.list);
 		return request<BookmarkPage>(`/bookmarks?${params}`);
 	},
 	get: (id: string) => request<Bookmark>(`/bookmarks/${id}`),
 	create: (input: CreateBookmark) => request<{ bookmark: Bookmark; alreadyExists: boolean }>('/bookmarks', json('POST', input)),
 	patch: (id: string, patch: PatchBookmark) => request<Bookmark>(`/bookmarks/${id}`, json('PATCH', patch)),
 	remove: (id: string) => request<void>(`/bookmarks/${id}`, { method: 'DELETE' }),
+	lists: () => request<{ items: List[] }>('/lists'),
+	createList: (input: CreateList) => request<List>('/lists', json('POST', input)),
+	patchList: (id: string, patch: PatchList) => request<List>(`/lists/${id}`, json('PATCH', patch)),
+	deleteList: (id: string) => request<void>(`/lists/${id}`, { method: 'DELETE' }),
+	addToList: (listId: string, bookmarkId: string) => request<void>(`/lists/${listId}/bookmarks/${bookmarkId}`, { method: 'PUT' }),
+	removeFromList: (listId: string, bookmarkId: string) => request<void>(`/lists/${listId}/bookmarks/${bookmarkId}`, { method: 'DELETE' }),
 };
 
 /** Tell the Zerostash extension (if installed) to fetch previews now. */

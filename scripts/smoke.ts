@@ -98,6 +98,54 @@ check(
 	{ page1: page1.json?.items.map((x: { id: string }) => x.id), page2: page2.json?.items.map((x: { id: string }) => x.id) },
 );
 
+// ---- lists ----
+const listsCreated: string[] = [];
+async function createList(body: Record<string, unknown>) {
+	const r = await call('POST', '/lists', body);
+	if (r.json?.id) listsCreated.push(r.json.id);
+	return r;
+}
+const parent = await createList({ name: `Smoke ${run}`, icon: '📚' });
+check('create list', parent.status === 201 && parent.json.kind === 'manual' && parent.json.itemCount === 0, parent.json);
+const child = await createList({ name: `Smoke child ${run}`, parentId: parent.json.id });
+check('nested list', child.json?.parentId === parent.json.id, child.json);
+check('list cannot be its own ancestor', (await call('PATCH', `/lists/${parent.json.id}`, { parentId: child.json.id })).status === 400);
+check('smart list needs a query', (await call('POST', '/lists', { name: 'x', kind: 'smart' })).status === 400);
+
+const member = await create({ type: 'link', url: `${url}/listed`, source: 'web' });
+const mid = member.json.bookmark.id;
+await call('PUT', `/lists/${parent.json.id}/bookmarks/${mid}`);
+await call('PUT', `/lists/${parent.json.id}/bookmarks/${mid}`); // idempotent
+await call('PUT', `/lists/${child.json.id}/bookmarks/${mid}`);
+const lists1 = await call('GET', '/lists');
+const p1 = lists1.json?.items.find((l: { id: string }) => l.id === parent.json.id);
+check('adding twice counts once', p1?.itemCount === 1, p1);
+const inList = await call('GET', `/bookmarks?list=${parent.json.id}`);
+check('list view shows its bookmarks', inList.json?.items.length === 1 && inList.json.items[0].id === mid, inList.json);
+check('bookmark carries listIds', (await call('GET', `/bookmarks/${mid}`)).json?.listIds.length === 2);
+await call('DELETE', `/lists/${parent.json.id}/bookmarks/${mid}`);
+const p2 = (await call('GET', '/lists')).json?.items.find((l: { id: string }) => l.id === parent.json.id);
+check('remove decrements count', p2?.itemCount === 0, p2);
+
+await call('DELETE', `/bookmarks/${mid}`);
+created.splice(created.indexOf(mid), 1);
+const c2 = (await call('GET', '/lists')).json?.items.find((l: { id: string }) => l.id === child.json.id);
+check('deleting a bookmark decrements its lists', c2?.itemCount === 0, c2);
+
+const smart = await createList({ name: `Smart ${run}`, kind: 'smart', query: `smoke-${run}` });
+const smartView = await call('GET', `/bookmarks?list=${smart.json.id}`);
+check('smart list runs its search', smartView.json?.items.some((b: { url: string }) => b.url?.includes(`smoke-${run}`)), smartView.json?.items.length);
+check('smart lists reject manual adds', (await call('PUT', `/lists/${smart.json.id}/bookmarks/${a.json.bookmark.id}`)).status === 400);
+check('unknown list → 404', (await call('GET', '/bookmarks?list=nope')).status === 404);
+
+await call('DELETE', `/lists/${parent.json.id}`);
+const afterDelete = (await call('GET', '/lists')).json?.items;
+check(
+	'deleting a parent lifts its children',
+	!afterDelete.some((l: { id: string }) => l.id === parent.json.id) && afterDelete.find((l: { id: string }) => l.id === child.json.id)?.parentId === null,
+);
+for (const id of listsCreated) await call('DELETE', `/lists/${id}`);
+
 for (const id of created) await call('DELETE', `/bookmarks/${id}`);
 check('delete → gone', (await call('GET', `/bookmarks/${a.json.bookmark.id}`)).status === 404);
 
