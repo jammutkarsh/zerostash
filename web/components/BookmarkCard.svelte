@@ -49,14 +49,14 @@
 
 {#snippet actions()}
 	<div class="ml-auto flex shrink-0 items-center">
-		<button
-			onclick={() => toggle(bookmark.id, 'favourited')}
-			aria-pressed={bookmark.favourited}
-			aria-label={bookmark.favourited ? 'Unfavourite' : 'Favourite'}
-			title={`${bookmark.favourited ? 'Unfavourite' : 'Favourite'} (f)`}
-			class="{button} {bookmark.favourited ? 'text-amber-600 dark:text-amber-400' : `text-muted-foreground hover:text-foreground ${reveal}`}"
-		>
-			<Star class="size-4 {bookmark.favourited ? 'fill-amber-400' : ''}" />
+		{#if bookmark.url}
+			<button onclick={copyLink} aria-label="Copy link" title="Copy link (c)" class="{button} {reveal} {copied ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground hover:text-foreground'}">
+				{#if copied}<Check class="size-4" />{:else}<Link class="size-4" />{/if}
+			</button>
+		{/if}
+		<ListPicker {bookmark} buttonClass="{button} {reveal}" />
+		<button onclick={() => remove(bookmark.id)} aria-label="Delete" title="Delete (#)" class="{button} {reveal} text-muted-foreground hover:text-destructive">
+			<Trash2 class="size-4" />
 		</button>
 		<button
 			onclick={() => toggle(bookmark.id, 'archived')}
@@ -66,14 +66,14 @@
 		>
 			{#if bookmark.archived}<ArchiveRestore class="size-4" />{:else}<Archive class="size-4" />{/if}
 		</button>
-		<ListPicker {bookmark} buttonClass="{button} {reveal}" />
-		{#if bookmark.url}
-			<button onclick={copyLink} aria-label="Copy link" title="Copy link (c)" class="{button} {reveal} {copied ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground hover:text-foreground'}">
-				{#if copied}<Check class="size-4" />{:else}<Link class="size-4" />{/if}
-			</button>
-		{/if}
-		<button onclick={() => remove(bookmark.id)} aria-label="Delete" title="Delete (#)" class="{button} {reveal} text-muted-foreground hover:text-destructive">
-			<Trash2 class="size-4" />
+		<button
+			onclick={() => toggle(bookmark.id, 'favourited')}
+			aria-pressed={bookmark.favourited}
+			aria-label={bookmark.favourited ? 'Unfavourite' : 'Favourite'}
+			title={`${bookmark.favourited ? 'Unfavourite' : 'Favourite'} (f)`}
+			class="{button} {bookmark.favourited ? 'text-amber-600 dark:text-amber-400' : `text-muted-foreground hover:text-foreground ${reveal}`}"
+		>
+			<Star class="size-4 {bookmark.favourited ? 'fill-amber-400' : ''}" />
 		</button>
 	</div>
 {/snippet}
