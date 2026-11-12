@@ -15,7 +15,7 @@
 		"db:migrate:local": "wrangler d1 migrations apply DB --local",
 		"types": "wrangler types server/worker-configuration.d.ts",
 		"check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.worker.json",
-		"test": "bun test shared server web",
+		"test": "bun test shared server web extension/src",
 		"smoke": "bun scripts/smoke.ts",
 		"ext:build": "bun run --filter zerostash-extension build",
 		"ext:zip": "bun run --filter zerostash-extension zip"

@@ -22,6 +22,15 @@
 		if (serverUrl && secret) await check(false);
 	});
 
+	// Show the cleaned address (https origin, no path) as soon as it's pasted or the field is left.
+	function tidy() {
+		try {
+			serverUrl = normaliseServerUrl(serverUrl);
+		} catch {
+			// Half-typed or invalid: Connect explains what's wrong.
+		}
+	}
+
 	async function connect(e: SubmitEvent) {
 		e.preventDefault();
 		await check(true);
@@ -115,7 +124,7 @@
 			<h2 class="text-base font-semibold">Server</h2>
 			<label class="grid gap-1.5 font-medium">
 				Server URL
-				<input bind:value={serverUrl} required placeholder="https://zerostash.you.workers.dev" class="rounded-md border bg-background px-3 py-2 font-normal outline-none focus:ring-2 focus:ring-accent" />
+				<input bind:value={serverUrl} onchange={tidy} onpaste={() => setTimeout(tidy)} required placeholder="https://zerostash.you.workers.dev" class="rounded-md border bg-background px-3 py-2 font-normal outline-none focus:ring-2 focus:ring-accent" />
 			</label>
 			<div class="grid gap-1.5">
 				<div class="relative flex items-center gap-1 font-medium">

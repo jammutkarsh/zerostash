@@ -19,11 +19,17 @@ export function isConfigured(s: Settings): boolean {
 	return !!s.serverUrl && !!s.secret;
 }
 
-/** Normalise user input to an origin; only http(s), and plain http only for localhost. */
+/**
+ * Reduce whatever was pasted (a dashboard link, a bare host name, an http:// address) to the
+ * server's https origin: path, query and credentials dropped, http upgraded to https.
+ * Plain http stays only for a local dev server.
+ */
 export function normaliseServerUrl(input: string): string {
-	const url = new URL(input.trim().includes('://') ? input.trim() : `https://${input.trim()}`);
-	const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-	if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) throw new Error('Use an https:// address (http is allowed only for localhost).');
+	const raw = input.trim();
+	const localHost = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i;
+	const url = new URL(raw.includes('://') ? raw : `${localHost.test(raw) ? 'http' : 'https'}://${raw}`);
+	if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('Use an https:// address.');
+	if (url.protocol === 'http:' && !localHost.test(url.host)) url.protocol = 'https:';
 	return url.origin;
 }
 

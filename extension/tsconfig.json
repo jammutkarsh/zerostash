@@ -12,5 +12,5 @@
 		"types": []
 	},
 	"include": ["global.d.ts", "*.ts", "src/**/*.ts", "src/**/*.svelte", "popup/*.ts", "options/*.ts", "../shared/**/*.ts"],
-	"exclude": ["../shared/**/*.test.ts", "vite.config.ts", "scripts"]
+	"exclude": ["../shared/**/*.test.ts", "src/**/*.test.ts", "vite.config.ts", "scripts"]
 }
