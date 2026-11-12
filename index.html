@@ -10,11 +10,17 @@
 		<meta property="og:description" content="Karakeep-style bookmarks on Cloudflare's free tier. Fork it, connect it, save from your browser." />
 		<meta property="og:type" content="website" />
 		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+		<meta name="theme-color" content="#f7f7f7" />
 		<script>
-			// Apply the theme before first paint to avoid a flash.
+			// Apply the theme before first paint to avoid a flash; the browser/app bar follows it.
 			try {
 				const t = localStorage.getItem('theme');
-				if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
+				if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.classList.add('dark');
+					document.querySelector('meta[name="theme-color"]').content = '#09090b';
+				}
 			} catch {}
 		</script>
 	</head>
