@@ -54,7 +54,7 @@
 			aria-pressed={bookmark.favourited}
 			aria-label={bookmark.favourited ? 'Unfavourite' : 'Favourite'}
 			title={`${bookmark.favourited ? 'Unfavourite' : 'Favourite'} (f)`}
-			class="{button} {bookmark.favourited ? 'text-amber-400' : `text-muted-foreground hover:text-foreground ${reveal}`}"
+			class="{button} {bookmark.favourited ? 'text-amber-600 dark:text-amber-400' : `text-muted-foreground hover:text-foreground ${reveal}`}"
 		>
 			<Star class="size-4 {bookmark.favourited ? 'fill-amber-400' : ''}" />
 		</button>
@@ -68,7 +68,7 @@
 		</button>
 		<ListPicker {bookmark} buttonClass="{button} {reveal}" />
 		{#if bookmark.url}
-			<button onclick={copyLink} aria-label="Copy link" title="Copy link (c)" class="{button} {reveal} {copied ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground hover:text-foreground'}">
+			<button onclick={copyLink} aria-label="Copy link" title="Copy link (c)" class="{button} {reveal} {copied ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground hover:text-foreground'}">
 				{#if copied}<Check class="size-4" />{:else}<Link class="size-4" />{/if}
 			</button>
 		{/if}

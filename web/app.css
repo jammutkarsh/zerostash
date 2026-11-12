@@ -13,7 +13,8 @@
 	--border: oklch(0.92 0.004 286.3);
 	--primary: oklch(0.21 0.006 285.9);
 	--primary-foreground: oklch(0.985 0 0);
-	--accent: oklch(0.769 0.188 70.08);
+	/* amber-700 on light surfaces: amber-500 was 2.1:1 on white, too faint for focus rings and text */
+	--accent: oklch(0.555 0.163 48.998);
 	--destructive: oklch(0.577 0.245 27.3);
 }
 .dark {

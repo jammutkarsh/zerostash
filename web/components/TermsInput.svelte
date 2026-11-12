@@ -35,7 +35,7 @@
 </script>
 
 <div
-	class="flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-md border bg-background px-2 py-1.5 text-sm focus-within:ring-2 focus-within:ring-accent/60"
+	class="flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-md border bg-background px-2 py-1.5 text-sm focus-within:ring-2 focus-within:ring-accent"
 	onclick={() => inputEl?.focus()}
 	role="presentation"
 >

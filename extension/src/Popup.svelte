@@ -91,7 +91,7 @@
 			</button>
 		{:else if ui.kind === 'saved'}
 			{@const b = ui.bookmark}
-			<p class="mb-1 flex items-center gap-2 text-base font-semibold text-green-600 dark:text-green-400"><CircleCheck class="size-5" />Stashed</p>
+			<p class="mb-1 flex items-center gap-2 text-base font-semibold text-green-700 dark:text-green-400"><CircleCheck class="size-5" />Stashed</p>
 			<p class="mb-3 line-clamp-2 text-muted-foreground">{b.title || b.url}</p>
 			<textarea
 				bind:value={note}
@@ -99,7 +99,7 @@
 				rows="3"
 				aria-label="Note"
 				placeholder="Add a note"
-				class="w-full resize-none rounded-md border bg-card p-2 outline-none focus:ring-2 focus:ring-accent/60"
+				class="w-full resize-none rounded-md border bg-card p-2 outline-none focus:ring-2 focus:ring-accent"
 			></textarea>
 			{#if noteSaved}<p class="mt-1 text-right text-xs text-muted-foreground">Note saved</p>{/if}
 		{:else}

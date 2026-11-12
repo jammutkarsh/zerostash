@@ -134,7 +134,7 @@
 				</div>
 				<div class="absolute -right-3 -bottom-6 w-44 rounded-lg border bg-card p-3 text-[11px] shadow-xl sm:-right-6">
 					<p class="mb-1 flex items-center gap-1.5 font-semibold"><img src="/favicon.svg" alt="" class="size-4" />Zerostash</p>
-					<p class="font-medium text-green-600 dark:text-green-400">Saved ✓</p>
+					<p class="font-medium text-green-700 dark:text-green-400">Saved ✓</p>
 					<p class="text-muted-foreground">⌘⇧E from any page</p>
 				</div>
 			</div>

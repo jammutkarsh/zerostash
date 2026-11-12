@@ -123,7 +123,7 @@
 					{confirmReset ? 'Click again to reset' : 'Reset'}
 				</button>
 			</div>
-			{#if status}<p class={status.ok ? 'text-green-600 dark:text-green-400' : 'text-destructive'}>{status.text}</p>{/if}
+			{#if status}<p class={status.ok ? 'text-green-700 dark:text-green-400' : 'text-destructive'}>{status.text}</p>{/if}
 		</form>
 
 		<section class="grid gap-3 border-t pt-6">
@@ -135,7 +135,7 @@
 				)}
 			</div>
 			{#if previewsAllowed}
-				<p class="text-green-600 dark:text-green-400">Allowed ✓</p>
+				<p class="text-green-700 dark:text-green-400">Allowed ✓</p>
 				<div class="flex items-center gap-3">
 					<button onclick={fetchNow} class="rounded-md border px-3 py-1.5 hover:bg-muted">Fetch previews now</button>
 					<span class="text-muted-foreground">{fetchResult}</span>

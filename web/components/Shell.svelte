@@ -343,7 +343,7 @@
 					type="search"
 					placeholder="Search"
 					aria-label="Search bookmarks"
-					class="w-full rounded-md border bg-card py-2 pr-16 pl-9 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-accent/60 [&::-webkit-search-cancel-button]:hidden"
+					class="w-full rounded-md border bg-card py-2 pr-16 pl-9 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-accent [&::-webkit-search-cancel-button]:hidden"
 				/>
 				{#if input}
 					<button onclick={clearSearch} aria-label="Clear search" class="absolute right-2 rounded p-1 text-muted-foreground hover:bg-muted"><X class="size-4" /></button>
