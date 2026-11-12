@@ -32,7 +32,12 @@
 		setTimeout(() => (copied = false), 1200);
 	}
 
-	const button = 'grid size-7 place-items-center rounded-md transition-colors hover:bg-muted';
+	// 28px for mouse, 40px for touch. With a mouse, actions show on hover/focus to keep cards calm;
+	// a favourited star and the keyboard-focused card always show them.
+	const button = 'grid size-7 place-items-center rounded-md transition-colors hover:bg-muted pointer-coarse:size-10';
+	const reveal = $derived(
+		focused ? '' : 'pointer-fine:opacity-0 pointer-fine:group-hover/card:opacity-100 pointer-fine:group-focus-within/card:opacity-100',
+	);
 
 	// Drag a card onto a list in the sidebar to add it there.
 	function ondragstart(e: DragEvent) {
@@ -48,7 +53,7 @@
 			aria-pressed={bookmark.favourited}
 			aria-label={bookmark.favourited ? 'Unfavourite' : 'Favourite'}
 			title={`${bookmark.favourited ? 'Unfavourite' : 'Favourite'} (f)`}
-			class="{button} {bookmark.favourited ? 'text-amber-400' : 'text-muted-foreground hover:text-foreground'}"
+			class="{button} {bookmark.favourited ? 'text-amber-400' : `text-muted-foreground hover:text-foreground ${reveal}`}"
 		>
 			<Star class="size-4 {bookmark.favourited ? 'fill-amber-400' : ''}" />
 		</button>
@@ -56,17 +61,17 @@
 			onclick={() => toggle(bookmark.id, 'archived')}
 			aria-label={bookmark.archived ? 'Unarchive' : 'Archive'}
 			title={`${bookmark.archived ? 'Unarchive' : 'Archive'} (a)`}
-			class="{button} text-muted-foreground hover:text-foreground"
+			class="{button} {reveal} text-muted-foreground hover:text-foreground"
 		>
 			{#if bookmark.archived}<ArchiveRestore class="size-4" />{:else}<Archive class="size-4" />{/if}
 		</button>
-		<ListPicker {bookmark} buttonClass={button} />
+		<ListPicker {bookmark} buttonClass="{button} {reveal}" />
 		{#if bookmark.url}
-			<button onclick={copyLink} aria-label="Copy link" title="Copy link (c)" class="{button} {copied ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground hover:text-foreground'}">
+			<button onclick={copyLink} aria-label="Copy link" title="Copy link (c)" class="{button} {reveal} {copied ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground hover:text-foreground'}">
 				{#if copied}<Check class="size-4" />{:else}<Link class="size-4" />{/if}
 			</button>
 		{/if}
-		<button onclick={() => remove(bookmark.id)} aria-label="Delete" title="Delete (#)" class="{button} text-muted-foreground hover:text-destructive">
+		<button onclick={() => remove(bookmark.id)} aria-label="Delete" title="Delete (#)" class="{button} {reveal} text-muted-foreground hover:text-destructive">
 			<Trash2 class="size-4" />
 		</button>
 	</div>
@@ -88,7 +93,7 @@
 {/snippet}
 
 {#if layout === 'list'}
-	<article data-entry={index} draggable="true" {ondragstart} class="flex items-center gap-3 rounded-lg border bg-card p-2.5 shadow-sm transition-shadow {focused ? 'ring-2 ring-accent' : ''}">
+	<article data-entry={index} draggable="true" {ondragstart} class="group/card flex items-center gap-3 rounded-lg border bg-card p-2.5 shadow-sm transition-shadow {focused ? 'ring-2 ring-accent' : ''}">
 		<div class="grid size-12 shrink-0 place-items-center overflow-hidden rounded-md bg-muted {loadingPreview ? 'animate-pulse' : ''}">
 			{#if showImage}
 				<img src={bookmark.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (imageFailed = true)} class="size-full object-cover" />
@@ -109,7 +114,7 @@
 		{@render actions()}
 	</article>
 {:else}
-	<article data-entry={index} draggable="true" {ondragstart} class="rounded-lg border bg-card shadow-sm transition-shadow hover:shadow-md {focused ? 'ring-2 ring-accent' : ''}">
+	<article data-entry={index} draggable="true" {ondragstart} class="group/card rounded-lg border bg-card shadow-sm transition-shadow hover:shadow-md {focused ? 'ring-2 ring-accent' : ''}">
 		{#if showImage}
 			<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="block overflow-hidden rounded-t-lg" tabindex="-1" draggable="false">
 				<img src={bookmark.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (imageFailed = true)} class="max-h-56 w-full bg-muted object-cover" />
