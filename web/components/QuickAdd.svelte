@@ -8,6 +8,10 @@
 	let value = $state('');
 	let busy = $state(false);
 	let message = $state('');
+	let focused = $state(false);
+	// One line until used, so the first screen shows bookmarks, not an empty box. Stays open while
+	// there's text, so a Save click that blurs the field (Safari) still lands on the button.
+	const open = $derived(focused || !!value.trim() || busy);
 
 	async function save() {
 		const input = value.trim();
@@ -41,23 +45,25 @@
 	}
 </script>
 
-<div class="flex flex-col rounded-lg border bg-card p-4 shadow-sm">
+<div class="flex flex-col rounded-lg border bg-card p-4 shadow-sm" onfocusin={() => (focused = true)} onfocusout={() => (focused = false)}>
 	<p class="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">New item</p>
 	<textarea
 		id="quick-add"
 		bind:value
 		{onkeydown}
-		rows={compact ? 2 : 5}
+		rows={open ? (compact ? 2 : 5) : 1}
 		aria-label="New bookmark or note"
 		placeholder="Paste a link or write a note…"
 		class="w-full flex-1 resize-none bg-transparent text-[15px] leading-relaxed outline-none placeholder:text-muted-foreground"
 	></textarea>
 	{#if message}<p class="mt-1 text-xs text-muted-foreground">{message}</p>{/if}
-	<button
-		onclick={save}
-		disabled={busy || !value.trim()}
-		class="mt-3 w-full rounded-md bg-primary py-2 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
-	>
-		{busy ? 'Saving…' : 'Save'}
-	</button>
+	{#if open}
+		<button
+			onclick={save}
+			disabled={busy || !value.trim()}
+			class="mt-3 w-full rounded-md bg-primary py-2 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
+		>
+			{busy ? 'Saving…' : 'Save'}
+		</button>
+	{/if}
 </div>
