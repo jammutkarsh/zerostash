@@ -128,10 +128,10 @@
 	<article data-entry={index} draggable="true" {ondragstart} class="group/card rounded-lg border bg-card shadow-sm transition-shadow hover:shadow-md {focused ? 'ring-2 ring-accent' : ''}">
 		{#if showImage}
 			<a href={bookmark.url} target="_blank" rel="noopener noreferrer" class="block overflow-hidden rounded-t-lg" tabindex="-1" aria-hidden="true" draggable="false">
-				<img src={bookmark.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (imageFailed = true)} class="max-h-56 w-full bg-muted object-cover" />
+				<img src={bookmark.imageUrl} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (imageFailed = true)} class="aspect-[1.91/1] w-full bg-muted object-cover" />
 			</a>
 		{:else if loadingPreview}
-			<div class="h-28 animate-pulse rounded-t-lg bg-muted" title="Fetching preview…"></div>
+			<div class="aspect-[1.91/1] animate-pulse rounded-t-lg bg-muted" title="Fetching preview…"></div>
 		{/if}
 		<div class="grid grid-cols-1 gap-1.5 px-3.5 pt-3 pb-2">
 			{#if bookmark.type === 'link'}

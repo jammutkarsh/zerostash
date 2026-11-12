@@ -36,10 +36,34 @@
 		...(showAdd ? [{ kind: 'add' } as const] : []),
 		...items.slice(0, shown).map((bookmark) => ({ kind: 'bookmark' as const, bookmark })),
 	]);
-	// Round-robin into columns so the grid reads left to right, newest first.
-	const columns = $derived(
-		Array.from({ length: columnCount }, (_, c) => entries.map((entry, i) => ({ entry, i })).filter(({ i }) => i % columnCount === c)),
-	);
+	// Each card goes to the shortest column so far, so columns end level instead of one running
+	// far past the others. Heights are estimated from the data, not measured: placement never
+	// waits for images, and cards already placed stay put as more are added below.
+	const columns = $derived.by(() => {
+		const colWidth = (width - GAP * (columnCount - 1)) / columnCount;
+		const cols = Array.from({ length: columnCount }, () => ({ h: 0, items: [] as { entry: Entry; i: number }[] }));
+		entries.forEach((entry, i) => {
+			const col = cols.reduce((a, b) => (b.h < a.h ? b : a)); // ties go left: the first row reads left to right
+			col.items.push({ entry, i });
+			col.h += estimate(entry, colWidth) + GAP;
+		});
+		return cols.map((c) => c.items);
+	});
+
+	/** Rough card height in px for the grid layout (BookmarkCard.svelte). Only has to rank columns. */
+	function estimate(entry: Entry, colWidth: number): number {
+		if (entry.kind === 'add') return 120;
+		const b = entry.bookmark;
+		const perLine = Math.max(20, (colWidth - 28) / 7.5); // ~characters per line of 14px text
+		const lines = (s: string | null | undefined, max: number) =>
+			Math.min(max, (s ?? '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0));
+		let h = 56; // padding and the footer row
+		if (b.imageUrl || (b.type === 'link' && b.ogStatus === 'pending')) h += colWidth / 1.91;
+		if (b.type === 'link') h += 21 * lines(b.title || b.url, 3) + (b.description ? 23 * lines(b.description, 3) + 6 : 0);
+		else h += (b.title ? 30 : 0) + 23 * lines(b.text, 12);
+		if (b.note) h += 20 * lines(b.note, 50) + 18;
+		return h;
+	}
 
 	function more() {
 		if (shown < items.length) shown += PAGE;
@@ -78,6 +102,15 @@
 		if (focused > last - columnCount * 2) more();
 	}
 
+	/** Up/down: the card above or below in the same column. */
+	function vertical(dir: 1 | -1) {
+		if (focused < first) return move(0);
+		const col = columns.find((c) => c.some((x) => x.i === focused)) ?? [];
+		const next = col[col.findIndex((x) => x.i === focused) + dir];
+		if (next?.entry.kind === 'bookmark') move(next.i - focused);
+		else if (dir === 1) more();
+	}
+
 	function onkeydown(e: KeyboardEvent) {
 		// ⌘Z / Ctrl+Z undoes the last delete or archive; inside a text field it stays the field's own undo.
 		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {
@@ -89,11 +122,11 @@
 		if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable], [role="dialog"]')) return;
 		const arrows = focused >= first; // arrows only steer once something is selected; otherwise they scroll
 		const handlers: Record<string, () => void> = {
-			j: () => move(columnCount),
-			k: () => move(-columnCount),
+			j: () => vertical(1),
+			k: () => vertical(-1),
 			h: () => move(-1),
 			l: () => move(1),
-			...(arrows ? { ArrowDown: () => move(columnCount), ArrowUp: () => move(-columnCount), ArrowLeft: () => move(-1), ArrowRight: () => move(1) } : {}),
+			...(arrows ? { ArrowDown: () => vertical(1), ArrowUp: () => vertical(-1), ArrowLeft: () => move(-1), ArrowRight: () => move(1) } : {}),
 			Escape: () => (focused = -1),
 			n: () => document.getElementById('quick-add')?.focus(),
 		};
