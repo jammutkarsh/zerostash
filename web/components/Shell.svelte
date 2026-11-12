@@ -164,7 +164,14 @@
 		write('sidebar', collapsed ? 'collapsed' : 'open');
 	}
 
+	// Two clicks: signing back in needs the secret, which many people don't keep handy.
+	let confirmLogout = $state(false);
 	async function logout() {
+		if (!confirmLogout) {
+			confirmLogout = true;
+			setTimeout(() => (confirmLogout = false), 4000);
+			return;
+		}
 		await api.logout();
 		setSessionHint(false);
 		clearCache();
@@ -291,8 +298,13 @@
 		<button onclick={toggleTheme} title={dark ? 'Light mode' : 'Dark mode'} class="{item} {mini ? 'justify-center px-0' : ''} {idle}">
 			{#if dark}<Sun class="size-4 shrink-0" />{:else}<Moon class="size-4 shrink-0" />{/if}{#if !mini}{dark ? 'Light mode' : 'Dark mode'}{/if}
 		</button>
-		<button onclick={logout} title="Sign out" class="{item} {mini ? 'justify-center px-0' : ''} {idle}">
-			<LogOut class="size-4 shrink-0" />{#if !mini}Sign out{/if}
+		<div class="my-2 border-t {mini ? 'mx-1' : 'mx-2.5'}"></div>
+		<button
+			onclick={logout}
+			title={confirmLogout ? 'Click again to sign out' : 'Sign out'}
+			class="{item} {mini ? 'justify-center px-0' : ''} {confirmLogout ? 'bg-destructive/10 font-medium text-destructive' : idle}"
+		>
+			<LogOut class="size-4 shrink-0" />{#if !mini}{confirmLogout ? 'Click again to sign out' : 'Sign out'}{/if}
 		</button>
 		<a
 			href={REPO}
