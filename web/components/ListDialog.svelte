@@ -1,9 +1,8 @@
 <script lang="ts">
 	import type { List } from '../../shared/schemas';
 	import { navigate, route } from '../lib/router.svelte';
-	import { createList, deleteList, lists, updateList } from '../lib/store.svelte';
+	import { createList, deleteList, lists, sync, updateList, viewItems } from '../lib/store.svelte';
 	import EmojiPicker from './EmojiPicker.svelte';
-	import TermsInput from './TermsInput.svelte';
 
 	// Create or edit a list. `list` = edit mode. `onCreated` lets callers (the card's list
 	// picker) act on the new list, e.g. add the bookmark to it.
@@ -17,7 +16,7 @@
 	let icon = $state('');
 	let parentId = $state('');
 	let kind = $state<'manual' | 'smart'>('manual');
-	let terms = $state<string[]>([]);
+	let query = $state('');
 	let error = $state('');
 	let busy = $state(false);
 	let nameEl = $state<HTMLInputElement>();
@@ -28,8 +27,8 @@
 		name = list?.name ?? '';
 		icon = list?.icon ?? '';
 		parentId = list?.parentId ?? '';
-		kind = list?.kind ?? 'manual';
-		terms = list ? [...list.terms] : [];
+		kind = list?.type ?? 'manual';
+		query = list?.query ?? '';
 		error = '';
 		queueMicrotask(() => nameEl?.focus());
 	});
@@ -46,16 +45,21 @@
 		return lists.items.filter((l) => !blocked.has(l.id));
 	});
 
+	const smart = $derived((list?.type ?? kind) === 'smart');
+	// Live preview over the local copy: the same matcher the list will use.
+	const matches = $derived(smart && query.trim() && sync.complete ? viewItems({ view: 'home', q: query.trim() }).length : null);
+
 	async function save(e: SubmitEvent) {
 		e.preventDefault();
-		if ((list?.kind ?? kind) === 'smart' && !terms.length) return void (error = 'Add at least one search term.');
+		if (smart && !query.trim()) return void (error = 'A smart list needs a search query.');
 		busy = true;
 		error = '';
+		const finalIcon = icon || (smart ? '🔎' : '📁');
 		try {
 			if (list) {
-				await updateList(list.id, { name, icon: icon || null, parentId: parentId || null, ...(list.kind === 'smart' ? { terms } : {}) });
+				await updateList({ listId: list.id, name, icon: finalIcon, parentId: parentId || null, ...(smart ? { query: query.trim() } : {}) });
 			} else {
-				const created = await createList({ name, icon: icon || undefined, parentId: parentId || null, kind, ...(kind === 'smart' ? { terms } : {}) });
+				const created = await createList({ name, icon: finalIcon, parentId: parentId || null, type: kind, ...(smart ? { query: query.trim() } : {}) });
 				onCreated?.(created);
 			}
 			open = false;
@@ -99,7 +103,7 @@
 
 			{#if !list}
 				<div class="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm">
-					{#each [['manual', 'Manual', 'You add bookmarks'], ['smart', 'Smart', 'Also fills itself from search terms']] as [value, label, hint] (value)}
+					{#each [['manual', 'Manual', 'You add bookmarks'], ['smart', 'Smart', 'Also fills itself from a search']] as [value, label, hint] (value)}
 						<button type="button" onclick={() => (kind = value as 'manual' | 'smart')} class="rounded-md px-3 py-1.5 text-left {kind === value ? 'bg-card shadow-sm' : 'text-muted-foreground'}">
 							<span class="block font-medium">{label}</span><span class="text-xs text-muted-foreground">{hint}</span>
 						</button>
@@ -107,21 +111,24 @@
 				</div>
 			{/if}
 
-			{#if (list?.kind ?? kind) === 'smart'}
-				<div class="grid gap-1.5 text-sm font-medium">
-					<span>Search terms</span>
-					<TermsInput bind:terms />
+			{#if smart}
+				<label class="grid gap-1.5 text-sm font-medium">
+					Search query
+					<input bind:value={query} maxlength="1000" placeholder="e.g. postgres or #databases -is:archived" class="{field} font-mono font-normal" />
 					<span class="text-xs font-normal text-muted-foreground">
-						Separate with a comma or Enter. The list shows bookmarks whose title, link, description or note contain <b>any</b> of these (up to 10), plus any you add by hand.
+						Words match anywhere (title, link, description, note, tags). Combine with <code>or</code>, <code>-</code> to exclude,
+						<code>#tag</code>, <code>is:fav</code>, <code>is:archived</code>, <code>url:</code>, <code>list:"name"</code>, <code>after:2026-01-31</code>.
+						Bookmarks you add by hand belong too.
+						{#if matches !== null}<b class="text-foreground">{matches} {matches === 1 ? 'bookmark matches' : 'bookmarks match'} now.</b>{/if}
 					</span>
-				</div>
+				</label>
 			{/if}
 
 			<label class="grid gap-1.5 text-sm font-medium">
 				Inside
 				<select bind:value={parentId} class="{field} font-normal">
 					<option value="">Top level</option>
-					{#each parents as p (p.id)}<option value={p.id}>{p.icon ? `${p.icon} ` : ''}{p.name}</option>{/each}
+					{#each parents as p (p.id)}<option value={p.id}>{p.icon} {p.name}</option>{/each}
 				</select>
 			</label>
 

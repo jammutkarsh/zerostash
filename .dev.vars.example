@@ -2,3 +2,10 @@
 # Settings → Variables and Secrets. Must be 32+ random characters: openssl rand -hex 32
 # Left empty on purpose so a default can never be accepted as a real secret.
 ZEROSTASH_SECRET=
+
+# AI tags and summaries. Workers AI (free daily quota) is used unless a key below is set.
+# Local dev calls the real Workers AI on your account; "off" keeps dev runs offline.
+ZEROSTASH_AI=off
+# One of (first wins): ANTHROPIC_API_KEY= (claude-sonnet-5-5) / OPENAI_API_KEY= (gpt-6.1-terra) /
+# GEMINI_API_KEY= (gemini-3.8-flash) / AI_API_KEY= + AI_BASE_URL= + AI_MODEL= (any OpenAI-compatible API)
+# AI_MODEL= overrides the default model of whichever provider is used.

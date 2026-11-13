@@ -2,7 +2,6 @@
 	import Archive from '@lucide/svelte/icons/archive';
 	import Braces from '@lucide/svelte/icons/braces';
 	import CircleArrowUp from '@lucide/svelte/icons/circle-arrow-up';
-	import Download from '@lucide/svelte/icons/download';
 	import House from '@lucide/svelte/icons/house';
 	import Keyboard from '@lucide/svelte/icons/keyboard';
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
@@ -16,30 +15,39 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Rows3 from '@lucide/svelte/icons/rows-3';
 	import Search from '@lucide/svelte/icons/search';
+	import SettingsIcon from '@lucide/svelte/icons/settings';
+	import Smartphone from '@lucide/svelte/icons/smartphone';
 	import Sun from '@lucide/svelte/icons/sun';
+	import Tags from '@lucide/svelte/icons/tags';
 	import X from '@lucide/svelte/icons/x';
 	import { onMount } from 'svelte';
 	import pkg from '../../package.json';
-	import { api, type View } from '../lib/api';
+	import { logout as signOut } from '../lib/api';
 	import { navigate, route } from '../lib/router.svelte';
 	import { setSessionHint } from '../lib/session';
 	import type { List } from '../../shared/schemas';
-	import { clearCache, lists, setInList, sidebarCounts, startSync } from '../lib/store.svelte';
+	import { clearCache, lists, setInList, sidebarCounts, startSync, tags, type View } from '../lib/store.svelte';
 	import { toast } from '../lib/toast.svelte';
 	import { isNewer, latestRelease, UPSTREAM, type Release } from '../lib/update';
 	import BookmarkGrid from './BookmarkGrid.svelte';
 	import ListDialog from './ListDialog.svelte';
 	import Menu from './Menu.svelte';
 	import ShortcutsDialog from './ShortcutsDialog.svelte';
+	import Settings from './Settings.svelte';
+	import TagsPage from './TagsPage.svelte';
 
 	type Layout = 'masonry' | 'list';
 	const pages: Record<string, View> = { '/dashboard': 'home', '/dashboard/archive': 'archive', '/dashboard/favourites': 'favourites' };
 	const view = $derived(pages[route.path] ?? 'home');
 	const listId = $derived(route.path.startsWith('/dashboard/lists/') ? decodeURIComponent(route.path.slice('/dashboard/lists/'.length)) : '');
 	const currentList = $derived(lists.items.find((l) => l.id === listId) ?? null);
-	// Every sidebar entry shows its count, 0 included. Mid-download only the server's manual-list counts are known.
+	const tagsPage = $derived(route.path === '/dashboard/tags');
+	const settingsPage = $derived(route.path === '/dashboard/settings');
+	const tagId = $derived(route.path.startsWith('/dashboard/tags/') ? decodeURIComponent(route.path.slice('/dashboard/tags/'.length)) : '');
+	const currentTag = $derived(tags.items.find((t) => t.id === tagId) ?? null);
+	// Every sidebar entry shows its count, 0 included, once the whole library is here.
 	const counts = $derived(sidebarCounts());
-	const countOf = (key: string, fallback?: number) => counts?.[key] ?? fallback ?? '';
+	const countOf = (key: string) => counts?.[key] ?? '';
 	const count = 'text-xs tabular-nums text-muted-foreground';
 	const REPO = `https://github.com/${UPSTREAM}`;
 
@@ -114,7 +122,7 @@
 		if (!id) return;
 		e.preventDefault();
 		void setInList(id, list.id, true);
-		toast(`Added to ${list.icon ? `${list.icon} ` : ''}${list.name}`, 2000);
+		toast(`Added to ${list.icon} ${list.name}`, 2000);
 	}
 
 	function onSearchKey(e: KeyboardEvent) {
@@ -168,7 +176,7 @@
 			setTimeout(() => (confirmLogout = false), 4000);
 			return;
 		}
-		await api.logout();
+		await signOut();
 		setSessionHint(false);
 		clearCache();
 		navigate('/');
@@ -177,6 +185,7 @@
 	const nav = [
 		{ path: '/dashboard', label: 'Home', icon: House, view: 'home' },
 		{ path: '/dashboard/archive', label: 'Archive', icon: Archive, view: 'archive' },
+		{ path: '/dashboard/tags', label: 'Tags', icon: Tags, view: 'tags' },
 	];
 	const isMac = navigator.platform.toLowerCase().includes('mac');
 	const item = 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors';
@@ -206,7 +215,7 @@
 	<nav class="mt-5 grid gap-0.5">
 		{#each nav as n (n.path)}
 			<a href={n.path} onclick={(e) => (e.preventDefault(), go(n.path))} title={n.label} class="{item} {mini ? 'justify-center px-0' : ''} {route.path === n.path && !query ? 'bg-muted font-medium text-foreground' : idle}">
-				<n.icon class="size-4 shrink-0" />{#if !mini}<span class="flex-1">{n.label}</span><span class={count}>{countOf(n.view)}</span>{/if}
+				<n.icon class="size-4 shrink-0" />{#if !mini}<span class="flex-1">{n.label}</span><span class={count}>{n.view === 'tags' ? tags.items.length : countOf(n.view)}</span>{/if}
 			</a>
 		{/each}
 	</nav>
@@ -240,14 +249,14 @@
 				<a
 					href="/dashboard/lists/{list.id}"
 					onclick={(e) => (e.preventDefault(), go(`/dashboard/lists/${list.id}`))}
-					title={list.kind === 'smart' ? `${list.name}: smart list matching ${list.terms.join(', ')}` : list.name}
+					title={list.type === 'smart' ? `${list.name}: smart list matching ${list.query}` : list.name}
 					class="{item} {mini ? 'justify-center px-0' : ''} {active ? 'bg-muted font-medium text-foreground' : idle}"
 					style={mini ? '' : `padding-left: ${0.625 + depth * 0.875}rem`}
 				>
-					<span class="w-4 shrink-0 text-center text-base leading-none">{list.icon || (list.kind === 'smart' ? '🔎' : '📁')}</span>
+					<span class="w-4 shrink-0 text-center text-base leading-none">{list.icon}</span>
 					{#if !mini}
 						<span class="min-w-0 flex-1 truncate">{list.name}</span>
-						<span class="{count} group-hover:invisible">{countOf(list.id, list.kind === 'manual' ? list.itemCount : undefined)}</span>
+						<span class="{count} group-hover:invisible">{countOf(list.id)}</span>
 					{/if}
 				</a>
 				{#if !mini}
@@ -284,13 +293,16 @@
 		<Menu label="Resources" buttonClass="{item} {mini ? 'justify-center px-0' : ''} {idle}">
 			{#snippet trigger()}<LifeBuoy class="size-4 shrink-0" />{#if !mini}Resources{/if}{/snippet}
 			{#snippet children(close)}
-				<a href="https://chromewebstore.google.com/detail/zerostash-%E2%80%93-bookmarks-on/jpoallbklhamdjpnhciegolbjbnncmai?authuser=0&hl=en" target="_blank" rel="noopener" onclick={close} role="menuitem" class="{item} {idle}">
-					<Download class="size-4" />Get the browser extension
+				<a href="{REPO}#use-karakeeps-apps" target="_blank" rel="noopener" onclick={close} role="menuitem" class="{item} {idle}">
+					<Smartphone class="size-4" />Browser extension & mobile apps
 				</a>
 				<a href="/api-docs" target="_blank" onclick={close} role="menuitem" class="{item} {idle}"><Braces class="size-4" />API documentation</a>
 				<button onclick={() => (close(), (shortcuts = true))} role="menuitem" class="{item} {idle}"><Keyboard class="size-4" />Keyboard shortcuts <kbd class="ml-auto rounded border px-1.5 text-[11px]">?</kbd></button>
 			{/snippet}
 		</Menu>
+		<a href="/dashboard/settings" onclick={(e) => (e.preventDefault(), go('/dashboard/settings'))} title="Settings" class="{item} {mini ? 'justify-center px-0' : ''} {settingsPage ? 'bg-muted font-medium text-foreground' : idle}">
+			<SettingsIcon class="size-4 shrink-0" />{#if !mini}Settings{/if}
+		</a>
 		<button onclick={toggleTheme} title={dark ? 'Light mode' : 'Dark mode'} class="{item} {mini ? 'justify-center px-0' : ''} {idle}">
 			{#if dark}<Sun class="size-4 shrink-0" />{:else}<Moon class="size-4 shrink-0" />{/if}{#if !mini}{dark ? 'Light mode' : 'Dark mode'}{/if}
 		</button>
@@ -354,19 +366,20 @@
 		<main class="mx-auto max-w-[1600px] p-3 md:p-6">
 			{#if query}
 				<h1 class="mb-4 text-sm text-muted-foreground">Results for <span class="font-medium text-foreground">“{query}”</span></h1>
+			{:else if tagsPage}
+				<h1 class="mb-4 text-xl font-semibold">Tags</h1>
+			{:else if settingsPage}
+				<h1 class="mx-auto mb-4 max-w-3xl text-xl font-semibold">Settings</h1>
+			{:else if tagId}
+				<h1 class="mb-4 text-xl font-semibold">#{currentTag?.name ?? 'tag'}</h1>
 			{:else if listId}
 				<div class="mb-4 flex items-center gap-2">
 					<h1 class="flex min-w-0 items-center gap-2 text-xl font-semibold">
-						<span>{currentList?.icon || (currentList?.kind === 'smart' ? '🔎' : '📁')}</span>
+						<span>{currentList?.icon ?? '📁'}</span>
 						<span class="truncate">{currentList?.name ?? 'List'}</span>
 					</h1>
-					{#if currentList?.kind === 'smart'}
-						<span class="text-xs text-muted-foreground">matches any of</span>
-						<span class="flex min-w-0 flex-wrap gap-1">
-							{#each currentList.terms as term (term)}
-								<span class="rounded-full border bg-card px-2 py-0.5 text-xs font-medium">{term}</span>
-							{/each}
-						</span>
+					{#if currentList?.type === 'smart'}
+						<code class="min-w-0 truncate rounded border bg-card px-2 py-0.5 text-xs" title="Smart list query">{currentList.query}</code>
 					{/if}
 					{#if currentList}
 						<button onclick={() => openListDialog(currentList)} aria-label="Edit list" title="Edit list" class="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
@@ -377,9 +390,15 @@
 			{:else}
 				<h1 class="sr-only">{view === 'favourites' ? 'Favourites' : view === 'archive' ? 'Archive' : 'Home'}</h1>
 			{/if}
-			{#key `${view}|${query}|${listId}|${currentList?.terms.join('\u0000') ?? ''}`}
-				<BookmarkGrid {view} {query} {listId} {layout} />
-			{/key}
+			{#if settingsPage && !query}
+				<Settings />
+			{:else if tagsPage && !query}
+				<TagsPage />
+			{:else}
+				{#key `${view}|${query}|${listId}|${tagId}|${currentList?.query ?? ''}`}
+					<BookmarkGrid {view} {query} {listId} {tagId} {layout} />
+				{/key}
+			{/if}
 		</main>
 	</div>
 </div>

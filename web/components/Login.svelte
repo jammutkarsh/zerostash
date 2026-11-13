@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, ApiError } from '../lib/api';
+	import { login } from '../lib/api';
 	import { navigate, redirect } from '../lib/router.svelte';
 	import { hasSessionHint, setSessionHint } from '../lib/session';
 
@@ -16,11 +16,13 @@
 		busy = true;
 		error = '';
 		try {
-			await api.login(secret.trim());
-			setSessionHint(true);
-			navigate('/dashboard');
+			const res = await login(secret.trim());
+			if (res === 'ok') {
+				setSessionHint(true);
+				navigate('/dashboard');
+			} else error = res === 'setup' ? 'This server has no ZEROSTASH_SECRET yet.' : "That secret doesn't match ZEROSTASH_SECRET.";
 		} catch (err) {
-			error = err instanceof ApiError && err.status === 401 ? "That secret doesn't match ZEROSTASH_SECRET." : String(err);
+			error = String(err);
 		} finally {
 			busy = false;
 		}

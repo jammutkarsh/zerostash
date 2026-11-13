@@ -1,11 +1,12 @@
 // The browser's own database (IndexedDB) holding the local copy of every bookmark.
 // localStorage is too small for it: text notes alone can be 20,000 characters each.
 // Every call fails soft: without IndexedDB the app still works, it just downloads again.
-import type { Bookmark, List } from '../../shared/schemas';
+import type { Bookmark, List, Tag } from '../../shared/schemas';
 
 export interface Meta {
-	since?: number; // GET /changes cursor; set only once the download finished
+	since?: number; // zerostash.changes cursor; set only once the download finished
 	lists?: List[];
+	tags?: Tag[];
 }
 
 const DB = 'zerostash';
@@ -13,8 +14,10 @@ let opened: Promise<IDBDatabase> | undefined;
 
 function open(): Promise<IDBDatabase> {
 	opened ??= new Promise((resolve, reject) => {
-		const req = indexedDB.open(DB, 1);
+		// v2 = Karakeep-shaped bookmarks: drop the v1 copy rather than migrate it.
+		const req = indexedDB.open(DB, 2);
 		req.onupgradeneeded = () => {
+			for (const name of [...req.result.objectStoreNames]) req.result.deleteObjectStore(name);
 			req.result.createObjectStore('bookmarks', { keyPath: 'id' });
 			req.result.createObjectStore('meta');
 		};

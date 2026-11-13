@@ -5,6 +5,8 @@
 	// Renders /openapi.json with our own code: a third-party docs script on this origin
 	// could call the API with the signed-in user's cookie.
 	type Schema = {
+		$ref?: string;
+		description?: string;
 		type?: string | string[];
 		properties?: Record<string, Schema>;
 		required?: string[];
@@ -26,11 +28,17 @@
 		responses?: Record<string, { description?: string; content?: Record<string, { schema?: Schema }> }>;
 		security?: unknown[];
 	};
-	type Spec = { info: { title: string; version: string; description?: string }; paths: Record<string, Record<string, Operation>> };
+	type Spec = {
+		info: { title: string; version: string; description?: string };
+		servers?: { url: string }[];
+		paths: Record<string, Record<string, Operation>>;
+		components?: { schemas?: Record<string, Schema> };
+	};
 
 	let spec = $state<Spec | null>(null);
 	let error = $state('');
 	const origin = location.origin;
+	const base = $derived(`${origin}${spec?.servers?.[0]?.url ?? ''}`);
 
 	onMount(async () => {
 		try {
@@ -45,6 +53,7 @@
 	/** Compact TypeScript-like rendering of a JSON schema. */
 	function shape(s: Schema | undefined, indent = ''): string {
 		if (!s) return 'unknown';
+		if (s.$ref) return s.$ref.split('/').pop()!; // shown under Schemas
 		if (s.const !== undefined) return JSON.stringify(s.const);
 		if (s.enum) return s.enum.map((v) => JSON.stringify(v)).join(' | ');
 		const union = s.anyOf ?? s.oneOf;
@@ -82,16 +91,18 @@
 	{:else}
 		<h1 class="text-3xl font-bold">{spec.info.title} <span class="align-middle text-base font-semibold text-muted-foreground">v{spec.info.version}</span></h1>
 		<div class="mt-4 grid gap-2 rounded-lg border bg-card p-4 text-sm">
-			<p><span class="font-medium">Base URL:</span> <code class="rounded bg-muted px-1.5 py-0.5">{origin}</code></p>
+			{#if spec.info.description}<p class="text-muted-foreground">{spec.info.description}</p>{/if}
+			<p><span class="font-medium">Base URL:</span> <code class="rounded bg-muted px-1.5 py-0.5">{base}</code></p>
 			<p>
 				<span class="font-medium">Auth:</span> send your secret as <code class="rounded bg-muted px-1.5 py-0.5">Authorization: Bearer &lt;ZEROSTASH_SECRET&gt;</code>.
+				Tools written for Karakeep's API work unchanged: give them this server's address and the secret as the API key.
 			</p>
 			<p><a href="/openapi.json" class="underline">openapi.json</a> for tools like Postman, Insomnia or code generators.</p>
 		</div>
-		<pre class="mt-4 overflow-x-auto rounded-lg border bg-card p-4 text-xs">curl {origin}/api/v1/bookmarks \
+		<pre class="mt-4 overflow-x-auto rounded-lg border bg-card p-4 text-xs">curl {base}/bookmarks \
   -H "Authorization: Bearer $ZEROSTASH_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{`{"url": "https://example.com"}`}'</pre>
+  -d '{`{"type": "link", "url": "https://example.com"}`}'</pre>
 
 		<div class="mt-10 grid gap-6">
 			{#each Object.entries(spec.paths) as [path, methods] (path)}
@@ -136,5 +147,17 @@
 				{/each}
 			{/each}
 		</div>
+		{#if spec.components?.schemas}
+			<h2 class="mt-12 mb-4 text-xl font-semibold">Schemas</h2>
+			<div class="grid gap-4">
+				{#each Object.entries(spec.components.schemas) as [name, schema] (name)}
+					<section id={name} class="rounded-lg border bg-card px-4 py-3 text-sm">
+						<h3 class="font-mono font-semibold">{name}</h3>
+						{#if schema.description}<p class="text-muted-foreground">{schema.description}</p>{/if}
+						<pre class="mt-2 overflow-x-auto rounded bg-muted p-3 font-mono text-xs">{shape({ ...schema, $ref: undefined })}</pre>
+					</section>
+				{/each}
+			</div>
+		{/if}
 	{/if}
 </div>

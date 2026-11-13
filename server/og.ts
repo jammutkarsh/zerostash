@@ -1,13 +1,14 @@
-// Server-side OpenGraph fallback, run by the cron. The extension is the primary OG
-// reader (browser follows redirects, carries cookies, isn't IP-blocked); this only
-// fills bookmarks the extension hasn't reached after OG_SERVER_GRACE_MS.
+// Link previews (OpenGraph). The server is the only reader: every new link is fetched right
+// away (waitUntil), and the cron retries the ones whose fetch failed.
 import { isPrivateHost, parseOg, readHead } from '../shared/og';
-import { applyOg, markOgFailed, pendingForServerOg } from './bookmarks';
+import { applyCrawl, markCrawlFailed, pendingCrawls } from './domain/bookmarks';
+import { emit } from './events';
+import type { Ctx } from './service';
 
-// ponytail: 5 pages per run keeps <head> parsing inside the Free plan's 10 ms CPU and
+// ponytail: 5 retries per cron run keeps <head> parsing inside the Free plan's 10 ms CPU and
 // well under 50 subrequests (redirects count). Raise on Workers Paid.
-const SERVER_OG_BATCH = 5;
-const USER_AGENT = 'Mozilla/5.0 (compatible; Zerostash/0.1; link preview; +https://github.com/jammutkarsh/zerostash)';
+const CRAWL_BATCH = 5;
+const USER_AGENT = 'Mozilla/5.0 (compatible; Zerostash/1.0; link preview; +https://github.com/jammutkarsh/zerostash)';
 
 export async function fetchOg(url: string) {
 	if (isPrivateHost(url)) throw new Error('private host');
@@ -26,16 +27,17 @@ export async function fetchOg(url: string) {
 	return og;
 }
 
-export async function serverOgFallback(db: D1Database, now = Date.now()): Promise<void> {
-	const todo = await pendingForServerOg(db, SERVER_OG_BATCH, now);
-	await Promise.all(
-		todo.map(async ({ id, url }) => {
-			try {
-				await applyOg(db, id, await fetchOg(url), 'server', now);
-			} catch (err) {
-				console.log(JSON.stringify({ msg: 'server og failed', id, error: String(err) }));
-				await markOgFailed(db, id, 'server', now);
-			}
-		}),
-	);
+export async function crawl(ctx: Ctx, id: string, url: string): Promise<void> {
+	try {
+		await applyCrawl(ctx.env.DB, id, await fetchOg(url));
+		await emit(ctx, [{ bookmarkId: id, webhook: 'crawled' }]);
+	} catch (err) {
+		console.log(JSON.stringify({ msg: 'crawl failed', id, error: String(err) }));
+		await markCrawlFailed(ctx.env.DB, id);
+	}
+}
+
+export async function crawlBacklog(ctx: Ctx, now = Date.now()): Promise<void> {
+	const todo = await pendingCrawls(ctx.env.DB, CRAWL_BATCH, now);
+	await Promise.all(todo.map(({ id, url }) => crawl(ctx, id, url)));
 }

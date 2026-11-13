@@ -1,9 +1,7 @@
-// API contracts shared by the Worker, the web UI and the extension.
-// Plain zod (no openapi extension) so the extension bundle stays small.
+// API contracts shared by the Worker (tRPC + REST) and the web app. Shapes and field names
+// follow Karakeep's API so Karakeep's own clients work unchanged; the definitions are our own.
 import { z } from 'zod';
 import { isHttpUrl } from './og';
-
-export const API_VERSION = 1;
 
 // Field limits protect D1's 2 MB row cap and keep rows small enough that
 // ~200k bookmarks fit in the 500 MB per-database Free limit.
@@ -13,160 +11,332 @@ export const LIMITS = {
 	description: 2000,
 	note: 10_000,
 	text: 20_000,
-	siteName: 200,
-	tagsPerBookmark: 50,
+	summary: 5_000,
 	tagName: 64,
+	tagsPerCall: 30, // 30 new names x 3 params stays under D1's 100 bound parameters
 	listName: 100,
 	listIcon: 16,
-	listTerms: 10, // smart-list terms; 10 terms × 7 searched columns stays under D1's 100 bound params
-	listTerm: 100,
+	listDescription: 500,
+	query: 1000,
 	pageSize: 100,
-	ogBatch: 20,
 } as const;
 
-const httpUrl = z.string().trim().max(LIMITS.url).refine(isHttpUrl, 'Must be an http(s) URL');
+export const OWNER_ID = 'owner';
 
-export const OgFields = z.object({
-	url: httpUrl.optional(), // canonical URL declared by the page
-	title: z.string().max(LIMITS.title).optional(),
-	description: z.string().max(LIMITS.description).optional(),
-	imageUrl: httpUrl.optional(),
-	siteName: z.string().max(LIMITS.siteName).optional(),
-	faviconUrl: httpUrl.optional(),
-});
-export type OgFields = z.infer<typeof OgFields>;
+export const BookmarkType = z.enum(['link', 'text', 'asset']);
+export const BookmarkSource = z.enum(['api', 'web', 'cli', 'mobile', 'extension', 'singlefile', 'rss', 'import']);
+export type BookmarkSource = z.infer<typeof BookmarkSource>;
+export const Status = z.enum(['pending', 'success', 'failure']);
+export type Status = z.infer<typeof Status>;
+export const AttachedBy = z.enum(['ai', 'human']);
+export type AttachedBy = z.infer<typeof AttachedBy>;
 
-export const BookmarkSource = z.enum(['extension', 'web', 'bookmarklet', 'import', 'rss', 'api']);
+// ---- outputs ----
 
-export const CreateBookmark = z
+export interface BookmarkTag {
+	id: string;
+	name: string;
+	attachedBy: AttachedBy;
+}
+
+export interface BookmarkAsset {
+	id: string;
+	assetType: string;
+	fileName: string | null;
+}
+
+export type BookmarkContent =
+	| {
+			type: 'link';
+			url: string;
+			title: string | null;
+			description: string | null;
+			imageUrl: string | null;
+			favicon: string | null;
+			publisher: string | null;
+			author: string | null;
+			crawlStatus: Status | null;
+			crawledAt: Date | null;
+	  }
+	| { type: 'text'; text: string; sourceUrl: string | null }
+	| { type: 'asset'; assetType: 'image' | 'pdf'; assetId: string; fileName: string | null; sourceUrl: string | null };
+
+export interface Bookmark {
+	id: string;
+	createdAt: Date;
+	modifiedAt: Date;
+	title: string | null;
+	archived: boolean;
+	favourited: boolean;
+	taggingStatus: Status | null;
+	summarizationStatus: Status | null;
+	embeddingStatus: null;
+	note: string | null;
+	summary: string | null;
+	source: BookmarkSource | null;
+	userId: string;
+	tags: BookmarkTag[];
+	content: BookmarkContent;
+	assets: BookmarkAsset[];
+	// Zerostash additions (Karakeep clients ignore them): let the web app answer
+	// list:/feed: queries from its offline copy.
+	listIds: string[];
+	feedId: string | null;
+}
+
+export interface BookmarkPage {
+	bookmarks: Bookmark[];
+	nextCursor: string | null;
+}
+
+export interface List {
+	id: string;
+	name: string;
+	description: string | null;
+	icon: string;
+	parentId: string | null;
+	type: 'manual' | 'smart';
+	query: string | null;
+	public: boolean;
+	hasCollaborators: boolean;
+	userRole: 'owner';
+}
+
+export interface Tag {
+	id: string;
+	name: string;
+	numBookmarks: number;
+	numBookmarksByAttachedType: Record<AttachedBy, number>;
+}
+
+/** zerostash.changes: what changed since the client's last sync. */
+export interface Changes {
+	bookmarks: Bookmark[]; // created or changed since `since`
+	deleted: string[]; // ids deleted since `since`
+	lists: List[]; // all lists (tiny table)
+	tags: Tag[]; // all tags (tiny table)
+	cursor: number; // pass as `since` next time
+	reset: boolean; // first sync, `since` too old, or too much changed: reload instead
+}
+
+// ---- inputs ----
+
+export const HttpUrl = z.string().trim().max(LIMITS.url).refine(isHttpUrl, 'Must be an http(s) URL');
+const title = z.string().trim().max(LIMITS.title);
+const id = z.string().min(1).max(64);
+const cursor = z.string().max(200).nullish();
+const limit = z.number().int().min(1).max(LIMITS.pageSize).optional();
+
+export const NewBookmark = z
 	.object({
-		type: z.enum(['link', 'text']).default('link'),
-		url: httpUrl.optional(),
+		type: BookmarkType.default('link'),
+		url: HttpUrl.optional(),
 		text: z.string().trim().min(1).max(LIMITS.text).optional(),
-		title: z.string().trim().max(LIMITS.title).optional(),
+		sourceUrl: HttpUrl.optional(),
+		assetId: id.optional(),
+		assetType: z.enum(['image', 'pdf']).optional(),
+		fileName: z.string().trim().max(LIMITS.title).optional(),
+		title: title.nullish(),
 		note: z.string().max(LIMITS.note).optional(),
-		source: BookmarkSource.default('api'),
-		// OG read by the client. `tab` = the extension read the open page itself.
-		og: OgFields.extend({ source: z.enum(['tab', 'bookmarklet']) }).optional(),
+		summary: z.string().max(LIMITS.summary).optional(),
+		archived: z.boolean().optional(),
+		favourited: z.boolean().optional(),
+		createdAt: z.coerce.date().optional(),
+		source: BookmarkSource.optional(),
 	})
-	.refine((b) => (b.type === 'link' ? !!b.url : !!b.text), {
-		message: 'link bookmarks need `url`, text bookmarks need `text`',
+	.refine((b) => (b.type === 'link' ? !!b.url : b.type === 'text' ? !!b.text : !!b.assetId && !!b.assetType), {
+		message: 'link bookmarks need `url`, text bookmarks need `text`, asset bookmarks need `assetId` and `assetType`',
 	});
-export type CreateBookmark = z.input<typeof CreateBookmark>;
+export type NewBookmark = z.input<typeof NewBookmark>;
+export type NewBookmarkInput = z.output<typeof NewBookmark>;
 
-export const PatchBookmark = z.object({
-	title: z.string().trim().max(LIMITS.title).nullable().optional(),
-	note: z.string().max(LIMITS.note).nullable().optional(),
-	text: z.string().trim().min(1).max(LIMITS.text).optional(),
-	favourited: z.boolean().optional(),
+export const UpdateBookmark = z.object({
+	bookmarkId: id,
+	title: title.nullish(),
+	note: z.string().max(LIMITS.note).optional(),
+	summary: z.string().max(LIMITS.summary).nullish(),
 	archived: z.boolean().optional(),
+	favourited: z.boolean().optional(),
+	createdAt: z.coerce.date().optional(),
+	url: HttpUrl.optional(),
+	description: z.string().max(LIMITS.description).nullish(),
+	author: z.string().max(200).nullish(),
+	publisher: z.string().max(200).nullish(),
+	text: z.string().trim().min(1).max(LIMITS.text).nullish(),
 });
-export type PatchBookmark = z.infer<typeof PatchBookmark>;
+export type UpdateBookmark = z.infer<typeof UpdateBookmark>;
 
-// OG written back by the extension's background worker after fetching the page.
-export const OgPatch = z.union([
-	OgFields.extend({ source: z.literal('extension'), failed: z.literal(false).optional() }),
-	z.object({ source: z.literal('extension'), failed: z.literal(true) }),
-]);
-export type OgPatch = z.infer<typeof OgPatch>;
+export const SortOrder = z.enum(['asc', 'desc']);
 
-export const ListQuery = z.object({
-	cursor: z.string().max(200).optional(),
-	limit: z.coerce.number().int().min(1).max(LIMITS.pageSize).default(30),
-	view: z.enum(['home', 'archive', 'favourites']).default('home'),
-	// Free-text search across all bookmarks (any view). ponytail: LIKE scan; FTS5 later.
-	q: z.string().trim().max(200).optional(),
-	// Bookmarks in one list (overrides `view`; a smart list runs its saved search).
-	list: z.string().max(64).optional(),
+export const GetBookmarks = z.object({
+	archived: z.boolean().optional(),
+	favourited: z.boolean().optional(),
+	tagId: id.optional(),
+	listId: id.optional(),
+	rssFeedId: id.optional(),
+	limit,
+	cursor,
+	sortOrder: SortOrder.optional(),
+});
+export type GetBookmarks = z.infer<typeof GetBookmarks>;
+
+export const SearchBookmarks = z.object({
+	text: z.string().max(LIMITS.query),
+	limit,
+	cursor,
+	// Karakeep's default "relevance" has no meaning without FTS; newest first instead.
+	sortOrder: z.enum(['relevance', 'asc', 'desc']).optional(),
 });
 
-export const Bookmark = z.object({
-	id: z.string(),
-	type: z.enum(['link', 'text']),
-	url: z.string().nullable(),
-	title: z.string().nullable(),
-	description: z.string().nullable(),
-	imageUrl: z.string().nullable(),
-	siteName: z.string().nullable(),
-	faviconUrl: z.string().nullable(),
-	text: z.string().nullable(),
-	note: z.string().nullable(),
-	summary: z.string().nullable(),
-	favourited: z.boolean(),
-	archived: z.boolean(),
-	source: BookmarkSource,
-	aiStatus: z.enum(['none', 'pending', 'done', 'failed', 'skipped']),
-	ogStatus: z.enum(['pending', 'done', 'server_failed', 'failed']),
-	ogSource: z.enum(['tab', 'bookmarklet', 'extension', 'feed', 'server']).nullable(),
-	listIds: z.array(z.string()),
-	createdAt: z.number(),
-	updatedAt: z.number(),
-});
-export type Bookmark = z.infer<typeof Bookmark>;
-
-export const ListKind = z.enum(['manual', 'smart']);
-
-export const List = z.object({
-	id: z.string(),
-	name: z.string(),
-	icon: z.string().nullable(),
-	parentId: z.string().nullable(),
-	kind: ListKind,
-	terms: z.array(z.string()), // smart lists: bookmarks matching any of these; [] for manual lists
-	itemCount: z.number(), // manual lists only; 0 for smart lists
-	createdAt: z.number(),
-});
-export type List = z.infer<typeof List>;
-
-const listName = z.string().trim().min(1).max(LIMITS.listName);
-const listIcon = z.string().trim().max(LIMITS.listIcon);
-const listTerms = z
-	.array(z.string().trim().min(1).max(LIMITS.listTerm))
-	.max(LIMITS.listTerms)
-	.transform((terms) => [...new Set(terms)]);
-
-export const CreateList = z
+export const NewList = z
 	.object({
-		name: listName,
-		icon: listIcon.optional(),
-		parentId: z.string().max(64).nullable().optional(),
-		kind: ListKind.default('manual'),
-		terms: listTerms.optional(),
+		name: z.string().trim().min(1).max(LIMITS.listName),
+		description: z.string().trim().max(LIMITS.listDescription).nullish(),
+		icon: z.string().trim().min(1).max(LIMITS.listIcon),
+		type: z.enum(['manual', 'smart']).default('manual'),
+		query: z.string().trim().min(1).max(LIMITS.query).optional(),
+		parentId: id.nullish(),
 	})
-	.refine((l) => l.kind === 'manual' || !!l.terms?.length, { message: 'smart lists need at least one search term' });
-export type CreateList = z.input<typeof CreateList>;
+	.refine((l) => l.type === 'manual' || !!l.query, { message: 'smart lists need a query', path: ['query'] });
+export type NewList = z.input<typeof NewList>;
+export type NewListInput = z.output<typeof NewList>;
 
-export const PatchList = z.object({
-	name: listName.optional(),
-	icon: listIcon.nullable().optional(),
-	parentId: z.string().max(64).nullable().optional(),
-	terms: listTerms.refine((t) => t.length > 0, 'a smart list needs at least one search term').optional(),
+export const EditList = z.object({
+	listId: id,
+	name: z.string().trim().min(1).max(LIMITS.listName).optional(),
+	description: z.string().trim().max(LIMITS.listDescription).nullish(),
+	icon: z.string().trim().min(1).max(LIMITS.listIcon).optional(),
+	parentId: id.nullish(),
+	query: z.string().trim().min(1).max(LIMITS.query).optional(),
 });
-export type PatchList = z.infer<typeof PatchList>;
+export type EditList = z.infer<typeof EditList>;
 
-export const BookmarkPage = z.object({ items: z.array(Bookmark), nextCursor: z.string().nullable() });
-export type BookmarkPage = z.infer<typeof BookmarkPage>;
+export const TagRef = z
+	.object({
+		tagId: id.optional(),
+		tagName: z.string().trim().min(1).max(LIMITS.tagName).optional(),
+		attachedBy: AttachedBy.default('human'),
+	})
+	.refine((t) => !!t.tagId || !!t.tagName, { message: 'You must provide either a tagId or a tagName' });
+export type TagRef = z.input<typeof TagRef>;
 
-export const ChangesQuery = z.object({
-	// `cursor` from the previous call. Missing = first sync.
-	since: z.coerce.number().int().min(0).optional(),
+export const UpdateTags = z.object({
+	bookmarkId: id,
+	attach: z.array(TagRef).max(LIMITS.tagsPerCall),
+	detach: z.array(TagRef).max(LIMITS.tagsPerCall),
 });
 
-export const Changes = z.object({
-	items: z.array(Bookmark), // created or changed since `since`
-	deleted: z.array(z.string()), // ids deleted since `since`
-	lists: z.array(List), // all lists (the table is tiny)
-	cursor: z.number(), // pass as `since` next time
-	reset: z.boolean(), // first sync, `since` too old, or too much changed: reload the views instead
-});
-export type Changes = z.infer<typeof Changes>;
+export const TagName = z.string().trim().min(1).max(LIMITS.tagName);
 
-export const Health = z.object({
-	name: z.literal('zerostash'),
-	version: z.string(),
-	apiVersion: z.number(),
-	setupRequired: z.boolean(),
-});
-export type Health = z.infer<typeof Health>;
+export const ListTags = z
+	.object({
+		nameContains: z.string().max(LIMITS.tagName).optional(),
+		ids: z.array(id).max(90).optional(),
+		attachedBy: z.enum(['ai', 'human', 'none']).optional(),
+		sortBy: z.enum(['name', 'usage', 'relevance']).optional(),
+		cursor: z.unknown().optional(),
+		limit: z.number().int().min(1).optional(),
+	})
+	.optional();
 
-export const ApiError = z.object({ error: z.string(), message: z.string().optional() });
+// ---- RSS feeds ----
+
+export interface Feed {
+	id: string;
+	name: string;
+	url: string;
+	enabled: boolean;
+	importTags: boolean;
+	lastFetchedStatus: Status | null;
+	lastFetchedAt: Date | null;
+	lastSuccessfulFetchAt: Date | null;
+}
+
+export const NewFeed = z.object({
+	name: z.string().trim().min(1).max(100),
+	url: HttpUrl,
+	enabled: z.boolean().default(true),
+	importTags: z.boolean().default(false),
+});
+export const UpdateFeed = z.object({
+	feedId: id,
+	name: z.string().trim().min(1).max(100).optional(),
+	url: HttpUrl.optional(),
+	enabled: z.boolean().optional(),
+	importTags: z.boolean().optional(),
+});
+
+// ---- webhooks ----
+
+export const WebhookEvent = z.enum(['created', 'edited', 'crawled', 'ai tagged', 'deleted']);
+export type WebhookEvent = z.infer<typeof WebhookEvent>;
+export interface Webhook {
+	id: string;
+	url: string;
+	events: WebhookEvent[];
+	hasToken: boolean;
+	createdAt: Date;
+}
+export const NewWebhook = z.object({ url: HttpUrl, events: z.array(WebhookEvent).min(1), token: z.string().max(500).optional() });
+export const UpdateWebhook = z.object({
+	webhookId: id,
+	url: HttpUrl.optional(),
+	events: z.array(WebhookEvent).min(1).optional(),
+	token: z.string().max(500).nullish(),
+});
+
+// ---- rules (Karakeep's rule engine shape) ----
+
+export const RuleEvent = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('bookmarkAdded') }),
+	z.object({ type: z.literal('tagAdded'), tagId: id }),
+	z.object({ type: z.literal('tagRemoved'), tagId: id }),
+	z.object({ type: z.literal('addedToList'), listId: id }),
+	z.object({ type: z.literal('removedFromList'), listId: id }),
+	z.object({ type: z.literal('favourited') }),
+	z.object({ type: z.literal('archived') }),
+]);
+export type RuleEvent = z.infer<typeof RuleEvent>;
+
+export type RuleCondition =
+	| { type: 'alwaysTrue' | 'isFavourited' | 'isArchived' }
+	| { type: 'urlContains' | 'urlDoesNotContain' | 'titleContains' | 'titleDoesNotContain'; str: string }
+	| { type: 'importedFromFeed'; feedId: string }
+	| { type: 'bookmarkTypeIs'; bookmarkType: 'link' | 'text' | 'asset' }
+	| { type: 'bookmarkSourceIs'; source: BookmarkSource }
+	| { type: 'hasTag'; tagId: string }
+	| { type: 'and' | 'or'; conditions: RuleCondition[] };
+const str = z.string().min(1).max(500);
+export const RuleCondition: z.ZodType<RuleCondition> = z.lazy(() =>
+	z.discriminatedUnion('type', [
+		z.object({ type: z.enum(['alwaysTrue', 'isFavourited', 'isArchived']) }),
+		z.object({ type: z.enum(['urlContains', 'urlDoesNotContain', 'titleContains', 'titleDoesNotContain']), str }),
+		z.object({ type: z.literal('importedFromFeed'), feedId: id }),
+		z.object({ type: z.literal('bookmarkTypeIs'), bookmarkType: BookmarkType }),
+		z.object({ type: z.literal('bookmarkSourceIs'), source: BookmarkSource }),
+		z.object({ type: z.literal('hasTag'), tagId: id }),
+		z.object({ type: z.enum(['and', 'or']), conditions: z.array(RuleCondition).max(20) }),
+	]),
+);
+
+export const RuleAction = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('addTag'), tagId: id }),
+	z.object({ type: z.literal('removeTag'), tagId: id }),
+	z.object({ type: z.literal('addToList'), listId: id }),
+	z.object({ type: z.literal('removeFromList'), listId: id }),
+	z.object({ type: z.literal('downloadFullPageArchive') }), // accepted, does nothing (no archives here)
+	z.object({ type: z.literal('favouriteBookmark') }),
+	z.object({ type: z.literal('archiveBookmark') }),
+]);
+export type RuleAction = z.infer<typeof RuleAction>;
+
+export const NewRule = z.object({
+	name: z.string().trim().min(1).max(100),
+	description: z.string().max(500).nullish(),
+	enabled: z.boolean().default(true),
+	event: RuleEvent,
+	condition: RuleCondition,
+	actions: z.array(RuleAction).min(1).max(10),
+});
+export const UpdateRule = NewRule.extend({ id });
+export type Rule = z.output<typeof NewRule> & { id: string; description: string | null };

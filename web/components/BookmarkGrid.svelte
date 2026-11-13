@@ -1,19 +1,20 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import type { Bookmark } from '../../shared/schemas';
-	import type { View } from '../lib/api';
-	import { lists, peek, remove, sync, toggle, viewItems } from '../lib/store.svelte';
+	import { lists, peek, remove, sync, toggle, urlOf, viewItems, type View } from '../lib/store.svelte';
 	import { undoLast } from '../lib/toast.svelte';
 	import BookmarkCard from './BookmarkCard.svelte';
 	import QuickAdd from './QuickAdd.svelte';
 
-	// Keyed by view|query|list in Shell, so these props are fixed for this instance.
+	// Keyed by view|query|list|tag in Shell, so these props are fixed for this instance.
 	let {
 		view,
 		query = '',
 		listId = '',
+		tagId = '',
 		layout = 'masonry',
-	}: { view: View; query?: string; listId?: string; layout?: 'masonry' | 'list' } = $props();
+	}: { view: View; query?: string; listId?: string; tagId?: string; layout?: 'masonry' | 'list' } = $props();
+	const selection = $derived({ view, q: query, listId, tagId });
 
 	let width = $state(0);
 	let focused = $state(-1);
@@ -21,11 +22,11 @@
 	let cards: Record<number, BookmarkCard> = {};
 
 	// Everything is local; only the number of cards in the DOM grows as you scroll.
-	const items = $derived(viewItems(view, query, listId));
+	const items = $derived(viewItems(selection));
 	const PAGE = 40;
 	let shown = $state(PAGE);
 
-	const showAdd = $derived(view === 'home' && !query && !listId);
+	const showAdd = $derived(view === 'home' && !query && !listId && !tagId);
 	const GAP = 16;
 	const columnCount = $derived(
 		layout === 'list' ? 1 : Math.min(5, Math.max(1, Math.floor((width + GAP) / (280 + GAP)))),
@@ -57,10 +58,14 @@
 		const perLine = Math.max(20, (colWidth - 28) / 7.5); // ~characters per line of 14px text
 		const lines = (s: string | null | undefined, max: number) =>
 			Math.min(max, (s ?? '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0));
+		const c = b.content;
 		let h = 56; // padding and the footer row
-		if (b.imageUrl || (b.type === 'link' && b.ogStatus === 'pending')) h += colWidth / 1.91;
-		if (b.type === 'link') h += 21 * lines(b.title || b.url, 3) + (b.description ? 23 * lines(b.description, 3) + 6 : 0);
-		else h += (b.title ? 30 : 0) + 23 * lines(b.text, 12);
+		if ((c.type === 'link' && (c.imageUrl || c.crawlStatus === 'pending')) || (c.type === 'asset' && c.assetType === 'image')) h += colWidth / 1.91;
+		if (c.type === 'link') h += 21 * lines(b.title || c.title || c.url, 3) + (c.description ? 23 * lines(c.description, 3) + 6 : 0);
+		else if (c.type === 'text') h += (b.title ? 30 : 0) + 23 * lines(c.text, 12);
+		else h += 21 * lines(b.title || c.fileName, 3);
+		if (b.summary) h += 23 * lines(b.summary, 4) + 6;
+		if (b.tags.length) h += 26;
 		if (b.note) h += 20 * lines(b.note, 50) + 18;
 		return h;
 	}
@@ -81,7 +86,7 @@
 	onMount(() => {
 		// Until the whole library is downloaded, fetch this screen's first page from the server.
 		// Searches scan D1, so wait for a pause in typing (each keystroke remounts this grid).
-		const t = setTimeout(() => void peek(view, query, listId), query ? 300 : 0);
+		const t = setTimeout(() => void peek(selection), query ? 300 : 0);
 		const io = new IntersectionObserver((e) => e[0].isIntersecting && more(), { rootMargin: '600px' });
 		io.observe(sentinel);
 		return () => {
@@ -132,9 +137,10 @@
 		};
 		if (current) {
 			const b = current;
+			const url = urlOf(b);
 			Object.assign(handlers, {
-				o: () => b.url && window.open(b.url, '_blank', 'noopener'),
-				Enter: () => b.url && window.open(b.url, '_blank', 'noopener'),
+				o: () => url && window.open(url, '_blank', 'noopener'),
+				Enter: () => url && window.open(url, '_blank', 'noopener'),
 				f: () => toggle(b.id, 'favourited'),
 				a: () => toggle(b.id, 'archived'),
 				c: () => cards[focused]?.copyLink(),
@@ -154,7 +160,7 @@
 	});
 
 	const empty: Record<View, string> = {
-		home: 'Your stash is empty. Paste a link above, or save pages with the browser extension.',
+		home: 'Your stash is empty. Paste a link above, or save pages with the Karakeep browser extension.',
 		favourites: 'Star a bookmark and it shows up here.',
 		archive: 'Archived bookmarks leave Home but stay searchable. Nothing archived yet.',
 	};
@@ -182,8 +188,10 @@
 	{:else if !items.length && !sync.complete}
 		{#if sync.error}<span class="text-destructive">{sync.error}</span>{:else}Loading…{/if}
 	{:else if !items.length}
-		{#if listId}
-			{lists.items.find((l) => l.id === listId)?.kind === 'smart'
+		{#if tagId}
+			No bookmarks have this tag.
+		{:else if listId}
+			{lists.items.find((l) => l.id === listId)?.type === 'smart'
 				? 'Nothing matches this smart list yet.'
 				: 'This list is empty. Add bookmarks with the list button on a card, or drag a card onto the list in the sidebar.'}
 		{:else}

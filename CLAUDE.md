@@ -2,60 +2,60 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Zerostash: a Karakeep-style bookmark manager that runs entirely on Cloudflare's **free tier** — one Worker (Hono API + static Svelte SPA) with D1, plus a Chrome/Firefox MV3 extension. Bun workspaces: the root is the deployable app, `extension/` is its own workspace.
+Zerostash: bookmarks that run entirely on Cloudflare's **free tier** — one Worker (Hono + tRPC + REST, static Svelte SPA) with D1, R2, a Queue, Workers AI and a cron. It speaks **Karakeep's API**, so Karakeep's browser extension, mobile apps, CLI and MCP server work against it; the Zerostash web app uses the same API. Single owner. There is no Zerostash extension any more.
 
 ## Commands
 
 ```sh
 bun install
-cp .dev.vars.example .dev.vars          # set ZEROSTASH_SECRET (≥32 chars)
+cp .dev.vars.example .dev.vars          # set ZEROSTASH_SECRET (≥32 chars); ZEROSTASH_AI=off keeps dev offline
 bun run db:migrate:local                # apply migrations/ to local D1
 bun run dev                             # SPA + Worker together on http://localhost:5173
 
 bun run check                           # svelte-check (web+shared) + tsc (server, tsconfig.worker.json)
-bun run --filter zerostash-extension check
-bun run test                            # bun test over shared/ server/ web/
-bun test server/auth.test.ts            # one file;  bun test -t "name" for one test
-bun run smoke                           # end-to-end API check; needs `bun run dev` running
+bun run test                            # bun test over shared/ server/ web/ (D1 = bun:sqlite stand-in)
+bun test server/domain/search.test.ts   # one file;  bun test -t "name" for one test
+bun run smoke                           # end-to-end over tRPC (Karakeep's client stack) + REST; needs `bun run dev`
 bun run types                           # regenerate server/worker-configuration.d.ts after editing wrangler.jsonc
 bun run build                           # writes public/openapi.json, then vite build
-bun run ext:build                       # extension → extension/dist/{chrome,firefox}
 ```
 
-CI (`.github/workflows/ci.yml`) runs: types, check, extension check, test, build, ext:build.
+CI (`.github/workflows/ci.yml`) runs: types, check, test, build.
 
-Smoke against production: `BASE_URL=https://zerostash.jammutkarsh.workers.dev SECRET=$(grep ^ZEROSTASH_SECRET= .prod.vars | cut -d= -f2-) bun scripts/smoke.ts` (`.prod.vars` is gitignored; never print the secret).
+Smoke against production: `BASE_URL=https://zerostash.jammutkarsh.workers.dev SECRET=$(grep ^ZEROSTASH_SECRET= .prod.vars | cut -d= -f2-) bun scripts/smoke.ts` (`.prod.vars` is gitignored; never print the secret). Smoke creates and deletes its own data, and subscribes to one real RSS feed.
 
 ## Deploying and releasing
 
-- **Never deploy or apply remote migrations from a laptop.** Production deploys only through Cloudflare Workers Builds on push to `main`: build command `bun run build`, deploy command `bun run deploy`. `scripts/deploy.ts` refuses unless `WORKERS_CI=1`, applies D1 migrations **before** `wrangler deploy` (after it only on a fork's first deploy, when the database doesn't exist yet), and relies on the build step for `dist/`.
-- `wrangler.jsonc` deliberately has no `database_id` (auto-provisioned) and no `routes` (so custom domains added in the dashboard survive deploys).
-- Releasing: bump `version` in `package.json` on `main`, then tag that same commit `vX.Y.Z`. `release.yml` fails if tag ≠ package.json, then publishes a GitHub release with extension zips. That release is what forks' dashboards compare against for the "Update available" notice (`web/lib/update.ts`); forks update via GitHub "Sync fork".
-- New schema change = new `migrations/000N_*.sql` file; never edit an applied migration.
+- **Never deploy or apply remote migrations from a laptop.** Production deploys only through Cloudflare Workers Builds on push to `main`: build `bun run build`, deploy `bun run deploy`. `scripts/deploy.ts` refuses unless `WORKERS_CI=1`, applies D1 migrations **before** `wrangler deploy` (after it only on a first deploy, when the database doesn't exist yet).
+- `wrangler.jsonc` deliberately has no `database_id` / bucket ids (auto-provisioned) and no `routes` (custom domains added in the dashboard survive deploys). Gotcha: if a deployed Worker's D1 binding points at a deleted database, Wrangler's provisioning fails the deploy; delete the Worker (after removing it as the queue's consumer) or rename the binding.
+- Releasing: bump `version` in `package.json` on `main`, then tag that commit `vX.Y.Z`. `release.yml` fails if tag ≠ package.json, then publishes a GitHub release; forks' dashboards compare against it (`web/lib/update.ts`).
+- New schema change = new `migrations/000N_*.sql`; never edit an applied migration. (1.0 restarted from `0001_init.sql`; 0.x databases must be recreated, see `docs/deployment/upgrading.md`.)
 
 ## Architecture
 
-**Request routing.** Static assets are free and don't invoke the Worker; `assets.run_worker_first: ["/api/*", "/privacy-policy"]` limits Worker invocations to the API. `@cloudflare/vite-plugin` runs both in one `vite dev`. `server/index.ts` exports `fetch` (Hono app), `scheduled` (single `*/5` cron: server OG fallback + tombstone purge) and a `queue` consumer reserved for future AI jobs.
+**One domain layer, two protocol adapters.** `server/domain/*` holds all D1/R2 logic and returns Karakeep-shaped objects. `server/service.ts` wraps writes with their side effects (crawl, AI queueing, file cleanup, events). Adapters stay thin:
+- `server/trpc.ts` — tRPC + superjson at `/api/trpc`, **Karakeep's procedure names and shapes** (what Karakeep's extension and mobile app speak), plus a `zerostash.*` namespace (delta sync, status) for the web app. Unimplemented Karakeep procedures return tRPC NOT_FOUND; a few the mobile app calls at startup return empty-safe values (highlights, invitations).
+- `server/rest.ts` — Karakeep's REST API at `/api/v1` via `@hono/zod-openapi`; `scripts/openapi.ts` emits the spec at build time (`/openapi.json`, rendered at `/api-docs`).
+- `server/app.ts` — Hono: CORS (extension origins only), `/api/health`, `/api/auth/login|logout` (web cookie), `/api/assets` (R2 upload/serve, outside `/api/v1` because Karakeep's clients use that path), mounts both APIs.
+- Adding an endpoint: domain function → service wrapper if it has side effects → tRPC procedure and/or REST route. Shapes/validation live in `shared/schemas.ts` (our own definitions with Karakeep's field names). Reimplement from Karakeep's wire contract only; never copy Karakeep code, prompts or schemas (AGPL).
 
-**API contract and typed clients.**
-- `server/routes.ts` holds every route contract (`createRoute` from `@hono/zod-openapi`) and must import only `@hono/zod-openapi` and `shared/schemas` — no Worker types — because the web app and extension type-import it. It ends with a handler-less chain (`.openapi(route, stub)`) that exports `ApiType`; hono/client response types come from the route's `responses`, not handlers.
-- `server/app.ts` registers handlers with `app.openapi(r.X, handler)` plus middleware (CORS reflecting `chrome-extension://`/`moz-extension://` origins, auth guard, error handler). Order matters: `/bookmarks/needs-og` before `/bookmarks/{id}`.
-- Adding a route: contract in `routes.ts` → append to the contract chain → handler in `app.ts`. Clients call `hc<ApiType>` and unwrap with `ok()` from `shared/http.ts` (throws `ApiError` with the server's `error` code).
-- `scripts/openapi.ts` emits the spec as a static asset at build time (served free at `/openapi.json`, rendered at `/api-docs`).
+**Auth.** Single owner, one secret `ZEROSTASH_SECRET` (≥32 chars, constant-time compared). Bearer secret (Karakeep clients, scripts) or the HMAC session cookie (web). Karakeep's `apiKeys.exchange` (any email + secret as password) and `apiKeys.validate` resolve to the same secret. `trpc.ts` gets secret checks through its context, so the web's type import of `AppRouter` doesn't pull in `auth.ts`.
 
-**Auth.** Single owner, one secret `ZEROSTASH_SECRET` (≥32 chars, constant-time compared). Extension/scripts send `Authorization: Bearer`; the web UI exchanges it at `/api/v1/auth/login` for an HMAC-signed cookie. Without a valid secret the server reports `setupRequired` and the SPA shows a setup page.
+**Web type-imports the server.** `web/lib/api.ts` uses `createTRPCClient<AppRouter>`, which brings server files into the DOM program; `web/worker-globals.d.ts` stands in for the few Worker globals they name. When server code reachable from `trpc.ts` starts using a new binding or global, add it there (tsconfig.worker.json still checks against the real types).
 
-**Data (D1).** Raw prepared statements and `db.batch()`, no ORM. Designed around Free-tier hard limits (10 ms CPU, 5M rows read/day, 100k rows written/day, 100 bound params per statement, 50 queries per invocation): index-backed cursor pagination, no `COUNT(*)`/`OFFSET`, no FTS5 (virtual tables break `wrangler d1 export`), list item counts maintained in the same batch as membership changes.
+**Data (D1).** `migrations/0001_init.sql`. Raw prepared statements and `db.batch()`, no ORM. Free-tier hard limits drive the design (10 ms CPU, 5M rows read/day, 100k rows written/day, 100 bound params per statement, 50 queries per invocation): one bookmarks table for all types, index-backed cursor pagination, no `COUNT(*)`/`OFFSET` (except smart-list sizes and stats), no FTS5, tag and list counts maintained in the same batch as membership changes, set-based tag updates (a call is ~10 statements whatever it touches). Tests run the real migrations on bun:sqlite (`server/test/d1.ts`).
 
-**Delta sync** (`GET /api/v1/changes?since=`). Returns bookmarks with `updated_at > since`, deleted ids from `tombstones`, and all lists. The cursor trails now by 60 s, so applying is idempotent; it returns `reset: true` on first call, when `since` is older than the 30-day tombstone TTL, or past 100 changes. **Every write that changes what a client shows must bump `bookmarks.updated_at`** (including list add/remove and list delete for its members), and deletes must insert a tombstone. The client (`web/lib/store.svelte.ts`) persists feeds in localStorage, renders from cache, and applies incoming items only if newer; searches and smart lists can't be evaluated from the delta and refetch their first page.
+**Query language** (`shared/query.ts`): Karakeep's search syntax parsed to an AST, used by search and smart lists. Two evaluators that must agree — SQL (`server/domain/search.ts`) and the web's predicate (`web/lib/match.ts`); `server/domain/search.test.ts` runs the same cases through both. Change both together. Case folding is ASCII-only everywhere (`fold`), matching SQLite's LIKE/NOCASE.
 
-**OpenGraph previews.** The extension is the primary reader (the browser follows redirects, sends cookies, isn't IP-blocked): the popup reads the active tab, and the background service worker polls `needs-og` and fetches pages with the optional `<all_urls>` permission. The server cron only fills bookmarks still pending after a grace period. A lower-ranked source never overwrites a higher one — `OG_SOURCE_RANK` in `shared/og.ts` must mirror `OG_RANK_SQL`/`OG_RANK` in `server/bookmarks.ts`. `shared/og.ts` parses `<head>` without `DOMParser` (MV3 service workers lack it).
+**Delta sync** (`zerostash.changes`). Bookmarks with `updated_at > since`, tombstoned ids, all lists and tags. The cursor trails now by 60 s; `reset: true` on first call, when `since` is older than the 30-day tombstone TTL, or past 100 changes. **Every write that changes what a client shows must bump `bookmarks.updated_at`** (tags, lists, assets, AI results included), and deletes must insert a tombstone. The web store (`web/lib/store.svelte.ts`) keeps the whole library in IndexedDB and computes views, search and smart lists locally.
 
-**Lists.** Manual (membership in `bookmark_lists`, counted) and smart (search terms stored as JSON in `lists.query`); nestable via `parent_id`.
+**Background work.** One queue (`zerostash-jobs`, `max_batch_size: 1` so each job gets a whole invocation's CPU/query budget) for AI, rules, webhooks and feed fetches (`server/jobs.ts`). `server/events.ts` turns writes into rule/webhook jobs only when something listens. Rule actions never emit events (no loops). The `*/5` cron retries link previews, queues due RSS feeds (hourly each), purges tombstones and sweeps unclaimed uploads.
 
-**Web SPA** (`web/`). Svelte 5 runes + Tailwind 4, hand-rolled router (`web/lib/router.svelte.ts`): `/` is the marketing page unless a session hint exists, `/login`, `/dashboard/*`, `/api-docs`. Two tsconfigs: `tsconfig.json` (web + shared, DOM) and `tsconfig.worker.json` (server).
+**Link previews.** The server fetches OpenGraph right after a link is saved (`waitUntil`), the cron retries failures up to 3 times. `bookmark.title` is the user's/client's title; `content.title` the page's.
 
-**Extension** (`extension/`). One codebase, two targets: `vite build --mode chrome|firefox` defines `__BROWSER_TARGET__`, then `scripts/generate-manifest.ts` writes the per-browser manifest (version taken from the root `package.json`). Settings live in `chrome.storage.local`. The service worker registers a content script (`bridge.ts`) on the user's server origin to relay the web app's `zerostash:saved` event so previews are fetched within seconds.
+**AI** (`server/ai.ts`). Provider chain, first key wins, defaults are each vendor's cheap-but-smart tier: `ANTHROPIC_API_KEY` (Anthropic SDK, `claude-sonnet-5-5`, structured output, server-side refusal fallback) → `OPENAI_API_KEY` (`gpt-6.1-terra`) → `GEMINI_API_KEY` (`gemini-3.8-flash` via Google's OpenAI-compatible API) → `AI_API_KEY`+`AI_BASE_URL`+`AI_MODEL` (any OpenAI-compatible API, no default) → Workers AI (`@cf/google/gemma-4-26b-a4b-it`; its catalog churns — error 5028 means pick a current model). `AI_MODEL` overrides any provider's default. Page text via `env.AI.toMarkdown`. `ZEROSTASH_AI=off` disables it; Karakeep's user settings (auto-tagging/summaries, tag style, curated tags) apply.
+
+**Web SPA** (`web/`). Svelte 5 runes + Tailwind 4, hand-rolled router (`web/lib/router.svelte.ts`): `/` marketing page unless a session hint exists, `/login`, `/dashboard/*` (incl. `/dashboard/tags`, `/dashboard/settings`), `/api-docs`.
 
 ## Conventions
 

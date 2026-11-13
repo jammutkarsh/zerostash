@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, ApiError } from '../lib/api';
+	import { api, errorCode } from '../lib/api';
 	import Setup from './Setup.svelte';
 	import Shell from './Shell.svelte';
 
@@ -9,8 +9,8 @@
 	let setup = $state(false);
 
 	onMount(() => {
-		api.me().catch((e) => {
-			if (e instanceof ApiError && e.code === 'setup_required') setup = true;
+		api.users.whoami.query().catch((e) => {
+			if (errorCode(e) === 'PRECONDITION_FAILED') setup = true;
 		});
 	});
 </script>

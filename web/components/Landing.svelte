@@ -13,29 +13,32 @@
 			body: "Everything lives in your own Cloudflare account. No sign-up, no tracking, no one else's servers.",
 		},
 		{
-			title: 'Save in one keystroke',
-			body: 'The Chrome and Firefox extension saves the page you are on. ⌘⇧E on Mac, Alt+Shift+E elsewhere, or right-click any link.',
+			title: "Works with Karakeep's apps",
+			body: "Save from Karakeep's Chrome and Firefox extension or its iPhone and Android apps. Zerostash speaks the same API, so they just work.",
 		},
 		{
 			title: 'Every save looks like the page',
-			body: "Metadata comes in automatically once the browser extension is set up, even for short links, redirects and pages you're logged into.",
+			body: 'Titles, descriptions and preview images come in within seconds of saving. Images and PDFs can be saved too.',
 		},
 		{
 			title: 'Find it again',
-			body: 'Fast search across everything you saved, nested lists, and smart lists that fill themselves from a search.',
+			body: 'Search with Karakeep\'s query syntax (#tag, is:fav, list:, after:), tags, nested lists, and smart lists that fill themselves from a search.',
+		},
+		{
+			title: 'AI tags and summaries',
+			body: "Free on Cloudflare's Workers AI, or bring your own Claude or OpenAI-compatible key. Tags reuse the ones you already have.",
+		},
+		{
+			title: 'RSS, rules and webhooks',
+			body: 'Subscribe to feeds, let rules tag and file new bookmarks for you, and send changes to your own services.',
 		},
 		{
 			title: 'Nothing to pay, nothing to cancel',
 			body: "Zerostash is built to fit inside Cloudflare's free plan, so there's no monthly bill.",
 		},
 		{
-			title: 'AI summaries and tags',
-			body: 'Bring your own model: Claude, OpenAI, Gemini, OpenRouter or any OpenAI-compatible API. Tags reuse the ones you already have.',
-			soon: true,
-		},
-		{
-			title: 'Imports, RSS and rules',
-			body: 'One-step import from Karakeep or your browser bookmarks, RSS auto-save, and rules that tag and file new bookmarks for you.',
+			title: 'Highlights, reader view and imports',
+			body: 'Read saved articles in the app, highlight passages, and import from Karakeep or your browser bookmarks.',
 			soon: true,
 		},
 	];
@@ -61,7 +64,7 @@
 	const steps = [
 		{ icon: Rocket, title: 'Fork and connect', body: 'Fork the repo and import it in Cloudflare (Workers & Pages → Create → GitHub). Every push to main deploys and updates the database.' },
 		{ icon: KeyRound, title: 'Set your secret', body: 'Add a long random string as the ZEROSTASH_SECRET secret in your Worker’s settings. That is your login.' },
-		{ icon: Puzzle, title: 'Connect the extension', body: 'Enter your Worker URL and the secret in the extension. Start saving.' },
+		{ icon: Puzzle, title: "Connect Karakeep's apps", body: "In Karakeep's extension or mobile app, enter your Worker URL as the server and the secret as the API key. Start saving." },
 	];
 </script>
 

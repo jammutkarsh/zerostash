@@ -1,17 +1,5 @@
-// OpenGraph/meta extraction from raw HTML. Shared by the extension's background
-// worker (no DOMParser in MV3 service workers) and the server fallback, so it is a
-// small string parser rather than a DOM walk. Only the <head> is ever examined.
-
-export type OgSource = 'tab' | 'bookmarklet' | 'extension' | 'feed' | 'server';
-
-// Higher rank wins; a lower-ranked source never overwrites a higher one.
-export const OG_SOURCE_RANK: Record<OgSource, number> = {
-	server: 1,
-	feed: 2,
-	extension: 3,
-	bookmarklet: 4,
-	tab: 5,
-};
+// OpenGraph/meta extraction from raw HTML for the server's link previews. A small string
+// parser rather than a DOM walk (Workers have no DOMParser); only the <head> is examined.
 
 export interface OgData {
 	url?: string; // canonical / og:url, if the page declares one
@@ -20,14 +8,15 @@ export interface OgData {
 	imageUrl?: string;
 	siteName?: string;
 	faviconUrl?: string;
+	author?: string;
 }
 
 export const OG_MAX_HTML_BYTES = 256 * 1024;
 
 /**
  * Hosts a background fetch must never touch: the user's machine and private networks.
- * Bookmark URLs can come from imports/feeds, and the extension fetches with the
- * user's network position, so this blocks reaching routers, local dev servers, etc.
+ * Bookmark URLs come from any client and from feeds, so this keeps the server from
+ * being used to reach routers, local dev servers, etc.
  */
 export function isPrivateHost(url: string): boolean {
 	let host: string;
@@ -143,6 +132,7 @@ export function parseOg(html: string, baseUrl: string): OgData {
 		),
 		siteName: clean(meta['og:site_name'] ?? meta['application-name'], 200),
 		faviconUrl: absolute(faviconHref ?? '/favicon.ico', base),
+		author: clean(meta['author'] ?? meta['article:author'], 200),
 	};
 }
 

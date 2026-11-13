@@ -70,7 +70,7 @@
 					class="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left hover:bg-muted"
 					style="padding-left: {0.625 + (query.trim() ? 0 : depth(l)) * 0.875}rem"
 				>
-					<span class="w-4 shrink-0 text-center">{l.icon || (l.kind === 'smart' ? '🔎' : '📁')}</span>
+					<span class="w-4 shrink-0 text-center">{l.icon}</span>
 					<span class="min-w-0 flex-1 truncate">{l.name}</span>
 					{#if member}<Check class="size-4 shrink-0 text-accent" />{/if}
 				</button>

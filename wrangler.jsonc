@@ -11,15 +11,18 @@
 	"assets": {
 		// The SPA is static and free to serve; only /api/* invokes the Worker.
 		"not_found_handling": "single-page-application",
-		"run_worker_first": ["/api/*", "/privacy-policy"]
+		"run_worker_first": ["/api/*"]
 	},
 	// No database_id on purpose: the first deploy creates the database (see scripts/deploy.ts).
 	"d1_databases": [{ "binding": "DB", "database_name": "zerostash", "migrations_dir": "migrations" }],
-	// AI jobs (Phase 3). Declared now so the deploy spike proves Queues provision on every path;
-	// if one can't, the plan's fallback is cron-only AI and this block goes away.
+	// Uploaded images and PDFs. Created on the first deploy too; R2 must be enabled on the account.
+	"r2_buckets": [{ "binding": "FILES", "bucket_name": "zerostash-files" }],
+	// Workers AI: the fallback model for tags/summaries, and page-to-text conversion (toMarkdown).
+	"ai": { "binding": "AI" },
+	// Background jobs: AI tagging/summaries, rules, webhooks (server/jobs.ts).
 	"queues": {
 		"producers": [{ "binding": "JOBS", "queue": "zerostash-jobs" }],
-		"consumers": [{ "queue": "zerostash-jobs", "max_batch_size": 5, "max_retries": 3 }]
+		"consumers": [{ "queue": "zerostash-jobs", "max_batch_size": 1, "max_retries": 3 }]
 	},
 	"triggers": { "crons": ["*/5 * * * *"] },
 	"observability": { "enabled": true, "head_sampling_rate": 1 }
