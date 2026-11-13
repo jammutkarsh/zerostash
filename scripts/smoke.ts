@@ -155,7 +155,8 @@ await k.bookmarks.deleteBookmark.mutate({ bookmarkId: host.id });
 check('deleting the bookmark deletes the file', (await fetch(`${BASE}/api/assets/${up.json.assetId}`, { headers: { authorization: `Bearer ${SECRET}` } })).status === 404);
 
 // ---- rules, feeds, webhooks (run on the local queue) ----
-const waitFor = async <T>(fn: () => Promise<T | undefined | null | false>, ms = 20_000): Promise<T | undefined> => {
+// Production queues can take ~30 s to deliver the first message after a quiet spell.
+const waitFor = async <T>(fn: () => Promise<T | undefined | null | false>, ms = 60_000): Promise<T | undefined> => {
 	for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 500))) {
 		const v = await fn();
 		if (v) return v;

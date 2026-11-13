@@ -50,7 +50,8 @@ export interface TrpcContext extends Ctx {
 	checkSecret: (given: string) => Promise<boolean>;
 }
 
-const t = initTRPC.context<TrpcContext>().create({ transformer: superjson });
+// isDev: tRPC guesses from NODE_ENV, which Workers don't set, and would send stack traces.
+const t = initTRPC.context<TrpcContext>().create({ transformer: superjson, isDev: false });
 
 const authed = t.procedure.use(async ({ ctx, next }) => {
 	if (ctx.setupRequired) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Set the ZEROSTASH_SECRET secret first.' });
