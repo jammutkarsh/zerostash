@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import { isHttpUrl } from '../../shared/og';
-	import { api, errorMessage, saveFile } from '../lib/api';
+	import { api, errorMessage, notifyExtension, saveFile } from '../lib/api';
 	import { watchPreview } from '../lib/preview';
 	import { upsert } from '../lib/store.svelte';
 
@@ -26,7 +26,10 @@
 			value = '';
 			upsert(bookmark);
 			if (alreadyExists) message = 'Already in your stash.';
-			if (bookmark.content.type === 'link' && bookmark.content.crawlStatus === 'pending') watchPreview(bookmark.id, upsert);
+			if (bookmark.content.type === 'link' && bookmark.content.crawlStatus === 'pending') {
+				notifyExtension();
+				watchPreview(bookmark.id, upsert);
+			}
 		} catch (e) {
 			message = e instanceof Error ? e.message : String(e);
 		} finally {

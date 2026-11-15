@@ -63,3 +63,8 @@ export async function saveFile(file: File) {
 		source: 'web',
 	});
 }
+
+/** Tell the Zerostash extension (if installed) to fetch missing previews from this browser now. */
+export function notifyExtension() {
+	window.postMessage({ type: 'zerostash:saved' }, location.origin);
+}

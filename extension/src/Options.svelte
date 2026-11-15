@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Info from '@lucide/svelte/icons/info';
 	import { onMount } from 'svelte';
-	import { API_VERSION, server } from './lib/api';
+	import { api, health as getHealth, MIN_SERVER_VERSION, olderThan } from './lib/api';
 	import { ALL_URLS, getSettings, normaliseServerUrl, saveSettings } from './lib/settings';
 
 	let serverUrl = $state('');
@@ -41,12 +41,12 @@
 		status = null;
 		try {
 			const origin = normaliseServerUrl(serverUrl);
-			const health = await server.health(origin).catch(() => {
+			const health = await getHealth(origin).catch(() => {
 				throw new Error(`No Zerostash server answered at ${origin}.`);
 			});
 			if (health.name !== 'zerostash') throw new Error(`${origin} isn't a Zerostash server.`);
 			if (health.setupRequired) throw new Error('The server has no ZEROSTASH_SECRET yet. Set it in Cloudflare first.');
-			await server.me({ serverUrl: origin, secret: secret.trim() }).catch(() => {
+			await (await api({ serverUrl: origin, secret: secret.trim() })).users.whoami.query().catch(() => {
 				throw new Error("The server rejected that secret. Use the value of ZEROSTASH_SECRET.");
 			});
 			if (save) {
@@ -54,12 +54,9 @@
 				serverUrl = origin;
 				await chrome.runtime.sendMessage({ type: 'settings-changed' });
 			}
-			const drift =
-				health.apiVersion > API_VERSION
-					? ' Your server is newer than this extension — update the extension.'
-					: health.apiVersion < API_VERSION
-						? ' Your server is older than this extension — sync your fork to update it.'
-						: '';
+			const drift = olderThan(health.version ?? '0', MIN_SERVER_VERSION)
+				? ` Your server is older than this extension needs (${MIN_SERVER_VERSION}): sync your fork to update it.`
+				: '';
 			status = { ok: !drift, text: `Connected to Zerostash ${health.version} at ${new URL(origin).host}.${drift}` };
 		} catch (err) {
 			status = { ok: false, text: err instanceof Error ? err.message : String(err) };

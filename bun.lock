@@ -5,7 +5,7 @@
     "": {
       "name": "zerostash",
       "dependencies": {
-        "@anthropic-ai/sdk": "^1.8.0",
+        "@anthropic-ai/sdk": "1.8.0",
         "@hono/zod-openapi": "1.6.3",
         "@trpc/client": "11.9.0",
         "@trpc/server": "11.9.0",
@@ -27,6 +27,10 @@
         "vite": "8.3.8",
         "wrangler": "4.160.0",
       },
+    },
+    "extension": {
+      "name": "zerostash-extension",
+      "version": "1.1.0",
     },
   },
   "packages": {
@@ -443,6 +447,8 @@
     "youch": ["youch@4.1.0-beta.10", "", { "dependencies": { "@poppinss/colors": "^4.1.5", "@poppinss/dumper": "^0.6.4", "@speed-highlight/core": "^1.2.7", "cookie": "^1.0.2", "youch-core": "^0.3.3" } }, "sha512-rLfVLB4FgQneDr0dv1oddCVZmKjcJ6yX6mS4pU82Mq/Dt9a3cLZQ62pDBL4AUO+uVrCvtWz3ZFUL2HFAFJ/BXQ=="],
 
     "youch-core": ["youch-core@0.3.3", "", { "dependencies": { "@poppinss/exception": "^1.2.2", "error-stack-parser-es": "^1.0.5" } }, "sha512-ho7XuGjLaJ2hWHoK8yFnsUGy2Y5uDpqSTq1FkHLK4/oqKtyUU1AFbOOxY4IpC9f0fTLjwYbslUz0Po5BpD1wrA=="],
+
+    "zerostash-extension": ["zerostash-extension@workspace:extension"],
 
     "zimmerframe": ["zimmerframe@1.1.5", "", {}, "sha512-msJxIvYDYcoNL+PJsu+7qmpDWsYmAxTY+2TNYXXF0hzBzBk0BMecOqDOG/EckUoKCuKwObfbugIl8QpqHDXeFA=="],
 

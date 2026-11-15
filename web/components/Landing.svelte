@@ -13,12 +13,16 @@
 			body: "Everything lives in your own Cloudflare account. No sign-up, no tracking, no one else's servers.",
 		},
 		{
-			title: "Works with Karakeep's apps",
-			body: "Save from Karakeep's Chrome and Firefox extension or its iPhone and Android apps. Zerostash speaks the same API, so they just work.",
+			title: 'Save in one keystroke',
+			body: 'The Chrome and Firefox extension saves the page you are on. ⌘⇧E on Mac, Alt+Shift+E elsewhere, or right-click any link or text.',
 		},
 		{
 			title: 'Every save looks like the page',
-			body: 'Titles, descriptions and preview images come in within seconds of saving. Images and PDFs can be saved too.',
+			body: "The extension reads the title, description and image from the page itself, even pages you're logged into. Images and PDFs can be saved too.",
+		},
+		{
+			title: "Works with Karakeep's apps",
+			body: "Save from Karakeep's iPhone and Android apps too. Zerostash speaks Karakeep's API, so its apps and tools just work.",
 		},
 		{
 			title: 'Find it again',
@@ -64,7 +68,7 @@
 	const steps = [
 		{ icon: Rocket, title: 'Fork and connect', body: 'Fork the repo and import it in Cloudflare (Workers & Pages → Create → GitHub). Every push to main deploys and updates the database.' },
 		{ icon: KeyRound, title: 'Set your secret', body: 'Add a long random string as the ZEROSTASH_SECRET secret in your Worker’s settings. That is your login.' },
-		{ icon: Puzzle, title: "Connect Karakeep's apps", body: "In Karakeep's extension or mobile app, enter your Worker URL as the server and the secret as the API key. Start saving." },
+		{ icon: Puzzle, title: 'Connect the extension', body: "Enter your Worker URL and the secret in the extension (or in Karakeep's phone app, as the API key). Start saving." },
 	];
 </script>
 
@@ -205,6 +209,7 @@
 	<footer class="mx-auto flex max-w-6xl flex-wrap gap-x-6 gap-y-2 px-5 py-8 text-sm text-muted-foreground">
 		<span>MIT licensed</span>
 		<a href={REPO} class="underline hover:text-foreground">GitHub</a>
+		<a href="/privacy-policy" class="underline hover:text-foreground">Privacy policy</a>
 		<span>Inspired by <a href="https://karakeep.app" class="underline hover:text-foreground">Karakeep</a></span>
 		<span>Made by <a href="https://utkarshchourasia.in" class="underline hover:text-foreground">Utkarsh Chourasia</a></span>
 	</footer>

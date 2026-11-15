@@ -92,6 +92,26 @@ const changes = await k.zerostash.changes.query({ since: t0 });
 check('delta sync carries the changes', !changes.reset && changes.bookmarks.some((b) => b.id === kb.id) && changes.lists.some((l) => l.id === smart.id), changes.reset);
 check('unsupported procedure → 404', (await fetch(`${BASE}/api/trpc/backups.list`, { headers: { authorization: `Bearer ${SECRET}` } })).status === 404);
 
+// ---- Zerostash extension paths ----
+const ext = await k.bookmarks.createBookmark.mutate({
+	type: 'link',
+	url: `https://example.com/ext-${run}`,
+	source: 'extension',
+	og: { title: 'Read in the tab', description: 'From the page head', imageUrl: 'https://example.com/i.png' },
+});
+check('extension save carries the tab preview (no server fetch)', ext.content.type === 'link' && ext.content.crawlStatus === 'success' && ext.content.title === 'Read in the tab', ext.content);
+// A host the server won't fetch: stays without a preview, so it's offered to the extension.
+const walled = await k.bookmarks.createBookmark.mutate({ type: 'link', url: `https://127.0.0.1/walled-${run}`, source: 'web' });
+const walled2 = await k.bookmarks.createBookmark.mutate({ type: 'link', url: `https://127.0.0.1/walled2-${run}`, source: 'web' });
+const offered = (await k.zerostash.previewsNeeded.query({ limit: 50 })).items.map((x) => x.id);
+check('links without a preview are offered to the extension', offered.includes(walled.id) && offered.includes(walled2.id), offered);
+await k.zerostash.setPreview.mutate({ bookmarkId: walled.id, og: { title: 'Read from the browser', siteName: 'Walled' } });
+const filledIn = await k.bookmarks.getBookmark.query({ bookmarkId: walled.id });
+check('browser preview fills it in', filledIn.content.type === 'link' && filledIn.content.title === 'Read from the browser' && filledIn.content.crawlStatus === 'success', filledIn.content);
+await k.zerostash.setPreview.mutate({ bookmarkId: walled2.id, og: null });
+check('a browser failure stops the offers', !(await k.zerostash.previewsNeeded.query({ limit: 50 })).items.some((x) => x.id === walled2.id));
+for (const id of [ext.id, walled.id, walled2.id]) await k.bookmarks.deleteBookmark.mutate({ bookmarkId: id });
+
 // ---- Karakeep REST API (/api/v1) ----
 const rest = async (method: string, path: string, body?: unknown, auth = true) => {
 	const res = await fetch(`${BASE}/api/v1${path}`, {

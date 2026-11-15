@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Zerostash: bookmarks that run entirely on Cloudflare's **free tier** — one Worker (Hono + tRPC + REST, static Svelte SPA) with D1, R2, a Queue, Workers AI and a cron. It speaks **Karakeep's API**, so Karakeep's browser extension, mobile apps, CLI and MCP server work against it; the Zerostash web app uses the same API. Single owner. There is no Zerostash extension any more.
+Zerostash: bookmarks that run entirely on Cloudflare's **free tier** — one Worker (Hono + tRPC + REST, static Svelte SPA) with D1, R2, a Queue, Workers AI and a cron, plus a Chrome/Firefox MV3 extension (`extension/`, its own Bun workspace). It speaks **Karakeep's API**, so Karakeep's mobile apps, extension, CLI and MCP server work against it; the Zerostash web app and extension use the same tRPC API. Single owner.
 
 ## Commands
 
@@ -13,14 +13,16 @@ bun run db:migrate:local                # apply migrations/ to local D1
 bun run dev                             # SPA + Worker together on http://localhost:5173
 
 bun run check                           # svelte-check (web+shared) + tsc (server, tsconfig.worker.json)
+bun run --filter zerostash-extension check
 bun run test                            # bun test over shared/ server/ web/ (D1 = bun:sqlite stand-in)
 bun test server/domain/search.test.ts   # one file;  bun test -t "name" for one test
 bun run smoke                           # end-to-end over tRPC (Karakeep's client stack) + REST; needs `bun run dev`
 bun run types                           # regenerate server/worker-configuration.d.ts after editing wrangler.jsonc
 bun run build                           # writes public/openapi.json, then vite build
+bun run ext:build                       # extension → extension/dist/{chrome,firefox};  ext:zip for store/release files
 ```
 
-CI (`.github/workflows/ci.yml`) runs: types, check, test, build.
+CI (`.github/workflows/ci.yml`) runs: types, check, extension check, test, build, ext:build.
 
 Smoke against production: `BASE_URL=https://zerostash.jammutkarsh.workers.dev SECRET=$(grep ^ZEROSTASH_SECRET= .prod.vars | cut -d= -f2-) bun scripts/smoke.ts` (`.prod.vars` is gitignored; never print the secret). Smoke creates and deletes its own data, and subscribes to one real RSS feed.
 
@@ -28,7 +30,7 @@ Smoke against production: `BASE_URL=https://zerostash.jammutkarsh.workers.dev SE
 
 - **Never deploy or apply remote migrations from a laptop.** Production deploys only through Cloudflare Workers Builds on push to `main`: build `bun run build`, deploy `bun run deploy`. `scripts/deploy.ts` refuses unless `WORKERS_CI=1`, applies D1 migrations **before** `wrangler deploy` (after it only on a first deploy, when the database doesn't exist yet).
 - `wrangler.jsonc` deliberately has no `database_id` / bucket ids (auto-provisioned) and no `routes` (custom domains added in the dashboard survive deploys). Gotcha: if a deployed Worker's D1 binding points at a deleted database, Wrangler's provisioning fails the deploy; delete the Worker (after removing it as the queue's consumer) or rename the binding.
-- Releasing: bump `version` in `package.json` on `main`, then tag that commit `vX.Y.Z`. `release.yml` fails if tag ≠ package.json, then publishes a GitHub release; forks' dashboards compare against it (`web/lib/update.ts`).
+- Releasing: bump `version` in `package.json` on `main`, then tag that commit `vX.Y.Z`. `release.yml` fails if tag ≠ package.json, sets the extension's version from the tag, then publishes a GitHub release with the extension zips; forks' dashboards compare against it (`web/lib/update.ts`). Chrome ships through the Web Store (upload `extension/zerostash-chrome.zip`); its privacy policy URL is `/privacy-policy`, a static page (`public/privacy-policy.html`) that must keep resolving.
 - New schema change = new `migrations/000N_*.sql`; never edit an applied migration. (1.0 restarted from `0001_init.sql`; 0.x databases must be recreated, see `docs/deployment/upgrading.md`.)
 
 ## Architecture
@@ -51,9 +53,13 @@ Smoke against production: `BASE_URL=https://zerostash.jammutkarsh.workers.dev SE
 
 **Background work.** One queue (`zerostash-jobs`, `max_batch_size: 1` so each job gets a whole invocation's CPU/query budget) for AI, rules, webhooks and feed fetches (`server/jobs.ts`). `server/events.ts` turns writes into rule/webhook jobs only when something listens. Rule actions never emit events (no loops). The `*/5` cron retries link previews, queues due RSS feeds (hourly each), purges tombstones and sweeps unclaimed uploads.
 
-**Link previews.** The server fetches OpenGraph right after a link is saved (`waitUntil`), the cron retries failures up to 3 times. `bookmark.title` is the user's/client's title; `content.title` the page's.
+**Link previews**, best source first: the Zerostash extension reads them from the open tab and sends them with the save (`createBookmark`'s `og`; no server fetch); otherwise the server fetches right after saving (`waitUntil`) and the cron retries up to 3 times; links still without one are offered to the extension (`zerostash.previewsNeeded`/`setPreview`), which fetches them from the user's browser (cookies, no datacenter IP blocks). `bookmark.title` is the user's/client's title; `content.title` the page's.
+
+**Save path is latency-critical** (Karakeep's clients wait on it): `createBookmark` is one D1 batch (insert + read back; AI pending statuses decided in the INSERT from stored settings via `json_extract`). The crawl, the AI queue message and events run in `waitUntil`; the cron re-queues AI jobs whose message was lost (`requeueStaleAi`). Don't add awaited round trips there.
 
 **AI** (`server/ai.ts`). Provider chain, first key wins, defaults are each vendor's cheap-but-smart tier: `ANTHROPIC_API_KEY` (Anthropic SDK, `claude-sonnet-5-5`, structured output, server-side refusal fallback) → `OPENAI_API_KEY` (`gpt-6.1-terra`) → `GEMINI_API_KEY` (`gemini-3.8-flash` via Google's OpenAI-compatible API) → `AI_API_KEY`+`AI_BASE_URL` (any OpenAI-compatible API, no default) → Workers AI (`@cf/google/gemma-4-26b-a4b-it`; its catalog churns — error 5028 means pick a current model). Model: picked in Settings (`settings.aiModels`, per provider, set via `zerostash.setAiModel`, which test-calls it before saving) → `AI_MODEL` → provider default. Page text via `env.AI.toMarkdown`. `ZEROSTASH_AI=off` disables it; Karakeep's user settings (auto-tagging/summaries, tag style, curated tags) apply.
+
+**Extension** (`extension/`). One codebase, two targets: `vite build --mode chrome|firefox`, then `scripts/generate-manifest.ts` writes the per-browser manifest (version from `extension/package.json`). Svelte 5, tRPC client typed from `AppRouter` (keep zod and other server-side libraries out of its bundle). Settings in `chrome.storage.local`. The service worker fills missing previews every 5 minutes and when the web app posts `zerostash:saved` (relayed by `bridge.ts`, a content script registered on the user's server origin).
 
 **Web SPA** (`web/`). Svelte 5 runes + Tailwind 4, hand-rolled router (`web/lib/router.svelte.ts`): `/` marketing page unless a session hint exists, `/login`, `/dashboard/*` (incl. `/dashboard/tags`, `/dashboard/settings`), `/api-docs`.
 

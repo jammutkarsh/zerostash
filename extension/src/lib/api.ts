@@ -1,28 +1,40 @@
-import { hc } from 'hono/client';
-import { ApiError, ok } from '../../../shared/http';
-import type { CreateBookmark, OgPatch, PatchBookmark } from '../../../shared/schemas';
-import type { ApiType } from '../../../server/routes';
+// The extension talks to the user's server over the same tRPC API as the web app and Karakeep's
+// clients (types straight from server/trpc.ts), with the server secret as a Bearer key. The
+// server's CORS allows extension origins.
+import { createTRPCClient, httpBatchLink } from '@trpc/client';
+import superjson from 'superjson';
+import type { AppRouter } from '../../../server/trpc';
 import { getSettings } from './settings';
-
-export { ApiError };
 
 type Connection = { serverUrl: string; secret: string };
 
-/** Typed client for the user's server, with the Bearer secret. The server's CORS allows extension origins. */
-async function v1(override?: Connection) {
+/** Oldest server this extension works with (createBookmark's `og`, zerostash.previewsNeeded/setPreview). */
+export const MIN_SERVER_VERSION = '1.1.0';
+
+export async function api(override?: Connection) {
 	const { serverUrl, secret } = override ?? (await getSettings());
-	if (!serverUrl || !secret) throw new ApiError(0, 'not_configured', 'Connect the extension to your server first.');
-	return hc<ApiType>(serverUrl, { headers: { authorization: `Bearer ${secret}` } }).api.v1;
+	if (!serverUrl || !secret) throw new Error('Connect the extension to your server first.');
+	return createTRPCClient<AppRouter>({
+		links: [httpBatchLink({ url: `${serverUrl}/api/trpc`, transformer: superjson, headers: () => ({ authorization: `Bearer ${secret}` }) })],
+	});
 }
 
-export const API_VERSION = 1;
+export interface Health {
+	name?: string;
+	version?: string;
+	setupRequired?: boolean;
+}
 
-export const server = {
-	health: (serverUrl: string) => ok(hc<ApiType>(serverUrl).api.v1.health.$get()),
-	me: async (override?: Connection) => ok((await v1(override)).me.$get()),
-	create: async (input: CreateBookmark) => ok((await v1()).bookmarks.$post({ json: input })),
-	patch: async (id: string, patch: PatchBookmark) => ok((await v1()).bookmarks[':id'].$patch({ param: { id }, json: patch })),
-	remove: async (id: string) => ok((await v1()).bookmarks[':id'].$delete({ param: { id } })),
-	needsOg: async () => ok((await v1()).bookmarks['needs-og'].$get({ query: { limit: '20' } })),
-	putOg: async (id: string, og: OgPatch) => ok((await v1()).bookmarks[':id'].og.$put({ param: { id }, json: og })),
-};
+export async function health(serverUrl: string): Promise<Health> {
+	const res = await fetch(`${serverUrl}/api/health`);
+	if (!res.ok) throw new Error(`HTTP ${res.status}`);
+	return res.json();
+}
+
+/** a < b, comparing x.y.z numerically (pre-release suffixes ignored). */
+export function olderThan(a: string, b: string): boolean {
+	const parse = (v: string) => v.replace(/^v/, '').split(/[.-]/).slice(0, 3).map((n) => parseInt(n, 10) || 0);
+	const [x, y] = [parse(a), parse(b)];
+	for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
+	return false;
+}

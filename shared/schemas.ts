@@ -127,6 +127,19 @@ const id = z.string().min(1).max(64);
 const cursor = z.string().max(200).nullish();
 const limit = z.number().int().min(1).max(LIMITS.pageSize).optional();
 
+/** Page metadata (OpenGraph & co.), from a browser. */
+export const Preview = z
+	.object({
+		title: z.string().trim().max(LIMITS.title),
+		description: z.string().trim().max(LIMITS.description),
+		imageUrl: HttpUrl,
+		siteName: z.string().trim().max(200),
+		faviconUrl: HttpUrl,
+		author: z.string().trim().max(200),
+	})
+	.partial();
+export type Preview = z.infer<typeof Preview>;
+
 export const NewBookmark = z
 	.object({
 		type: BookmarkType.default('link'),
@@ -143,6 +156,9 @@ export const NewBookmark = z
 		favourited: z.boolean().optional(),
 		createdAt: z.coerce.date().optional(),
 		source: BookmarkSource.optional(),
+		// Zerostash addition: the page preview, read from the open tab by the Zerostash extension.
+		// With it the server doesn't fetch the page (works behind logins and bot walls).
+		og: Preview.optional(),
 	})
 	.refine((b) => (b.type === 'link' ? !!b.url : b.type === 'text' ? !!b.text : !!b.assetId && !!b.assetType), {
 		message: 'link bookmarks need `url`, text bookmarks need `text`, asset bookmarks need `assetId` and `assetType`',

@@ -6,7 +6,7 @@
 	import { onMount } from 'svelte';
 	import { isHttpUrl } from '../../shared/og';
 	import type { Bookmark } from '../../shared/schemas';
-	import { server } from './lib/api';
+	import { api } from './lib/api';
 	import { saveTab } from './lib/save';
 	import { getSettings, isConfigured, isOwnServer, type Settings as Config } from './lib/settings';
 
@@ -52,7 +52,7 @@
 		noteSaved = false;
 		clearTimeout(noteTimer);
 		noteTimer = setTimeout(async () => {
-			await server.patch(bookmark.id, { note });
+			await (await api()).bookmarks.updateBookmark.mutate({ bookmarkId: bookmark.id, note });
 			noteSaved = true;
 		}, 400);
 	}
@@ -61,7 +61,7 @@
 	async function undo(bookmark: Bookmark, tab: chrome.tabs.Tab) {
 		clearTimeout(noteTimer);
 		try {
-			await server.remove(bookmark.id);
+			await (await api()).bookmarks.deleteBookmark.mutate({ bookmarkId: bookmark.id });
 			ui = { kind: 'ready', tab, savable: true };
 		} catch (e) {
 			ui = { kind: 'error', message: e instanceof Error ? e.message : String(e) };
@@ -107,7 +107,7 @@
 			{@const b = ui.bookmark}
 			{@const tab = ui.tab}
 			<p class="mb-1 flex items-center gap-2 text-base font-semibold text-green-700 dark:text-green-400"><CircleCheck class="size-5" />{ui.alreadyExists ? 'Already saved' : 'Saved'}</p>
-			<p class="mb-3 line-clamp-2 text-muted-foreground">{b.title || b.url}</p>
+			<p class="mb-3 line-clamp-2 text-muted-foreground">{b.title || (b.content.type === 'link' ? b.content.title || b.content.url : '')}</p>
 			<textarea
 				bind:value={note}
 				oninput={() => onNoteInput(b)}

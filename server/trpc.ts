@@ -18,6 +18,7 @@ import {
 	NewRule,
 	NewWebhook,
 	OWNER_ID,
+	Preview,
 	SearchBookmarks,
 	TagName,
 	UpdateBookmark,
@@ -26,7 +27,7 @@ import {
 	UpdateTags,
 	UpdateWebhook,
 } from '../shared/schemas';
-import { changesSince, checkUrl, listBookmarks, mustGetBookmark, recrawl } from './domain/bookmarks';
+import { changesSince, checkUrl, listBookmarks, mustGetBookmark, previewsNeeded, recrawl } from './domain/bookmarks';
 import { allLists, createList, deleteList, editList, getList, listFilter, listSizes } from './domain/lists';
 import { getSettings, UpdateUserSettings, updateSettings } from './domain/settings';
 import { userStats } from './domain/stats';
@@ -34,7 +35,7 @@ import { createTag, deleteTag, deleteUnusedTags, getTag, listTags, mergeTags, re
 import { DomainError } from './domain/util';
 import { aiModel, aiProvider, checkModel, defaultModel, MODEL_SUGGESTIONS } from './ai';
 import { summarizeNow } from './jobs';
-import { addBookmark, attachFile, changeTags, type Ctx, detachFile, editBookmark, listAdd, listRemove, removeBookmark, replaceFile } from './service';
+import { addBookmark, attachFile, browserPreview, changeTags, type Ctx, detachFile, editBookmark, listAdd, listRemove, removeBookmark, replaceFile } from './service';
 import { allFeeds, createFeed, deleteFeed, getFeed, updateFeed } from './domain/feeds';
 import { allRules, createRule, deleteRule, updateRule } from './domain/rules';
 import { allWebhooks, createWebhook, deleteWebhook, updateWebhook } from './domain/webhooks';
@@ -264,6 +265,14 @@ export const appRouter = t.router({
 	}),
 
 	zerostash: t.router({
+		/** Links still without a preview, for the Zerostash extension to fetch from the user's browser. */
+		previewsNeeded: authed.input(z.object({ limit: z.number().int().min(1).max(50).optional() })).query(async ({ ctx, input }) => ({
+			items: await previewsNeeded(ctx.env.DB, input.limit ?? 20),
+		})),
+		/** The preview the browser read (`og: null` = it couldn't read the page either). */
+		setPreview: authed.input(z.object({ bookmarkId: z.string(), og: Preview.nullable() })).mutation(async ({ ctx, input }) => {
+			await browserPreview(ctx, input.bookmarkId, input.og);
+		}),
 		/** What this server can do, for the web app's settings page. */
 		status: authed.query(async ({ ctx }) => aiStatus(ctx.env)),
 		/** Pick the model for the current AI provider (null = back to the default). Tested before it's saved. */

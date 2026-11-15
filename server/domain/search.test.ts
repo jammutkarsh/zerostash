@@ -14,7 +14,7 @@ const NOW = Date.UTC(2026, 10, 13);
 
 async function fixture() {
 	const db = testDb();
-	const add = async (input: Parameters<typeof NewBookmark.parse>[0]) => (await createBookmark(db, NewBookmark.parse(input), NOW)).bookmark.id;
+	const add = async (input: Parameters<typeof NewBookmark.parse>[0]) => (await createBookmark(db, NewBookmark.parse(input), {}, NOW)).bookmark.id;
 	const ids = {
 		pg: await add({ type: 'link', url: 'https://planetscale.com/blog/postgres', title: 'Postgres at scale', createdAt: new Date(NOW - 2 * DAY) }),
 		go: await add({ type: 'link', url: 'https://go.dev/blog/pipelines', favourited: true, createdAt: new Date(NOW - 40 * DAY) }),

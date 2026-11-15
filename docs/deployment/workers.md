@@ -64,15 +64,22 @@ Open `https://zerostash.<your-subdomain>.workers.dev/login` and sign in with the
 
 To use your own domain, add it under the Worker's **Settings → Domains & Routes**. Deploys keep it.
 
-## 5. Connect Karakeep's apps
+## 5. Install the browser extension
 
-Zerostash speaks Karakeep's API, so Karakeep's own clients save straight into your server:
+- **Chrome, Edge, Brave:** install [Zerostash from the Chrome Web Store](https://chromewebstore.google.com/detail/zerostash-%E2%80%93-bookmarks-on/jpoallbklhamdjpnhciegolbjbnncmai).
+- **Firefox:** download `zerostash-firefox.xpi` from the [latest release](https://github.com/jammutkarsh/zerostash/releases/latest). Open `about:debugging` → **This Firefox** → **Load Temporary Add-on**, and pick the file. Firefox removes temporary add-ons when it restarts, so you'll need to load it again after a restart.
 
-- **Browser:** the Karakeep extension for [Chrome](https://chromewebstore.google.com/detail/karakeep/kgcjekpmcjjogibpjebkhaanilehneje) or [Firefox](https://addons.mozilla.org/en-US/firefox/addon/karakeep/)
+In the extension's settings, enter your **Server** URL and your **Secret**, then click **Allow link previews**. Previews are read from the page you're on, so they work behind logins; with this permission your browser also fills in previews the server couldn't fetch.
+
+Save a page with the toolbar button, <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> on Mac, or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> elsewhere. You can also right-click any link or selected text.
+
+## 6. Karakeep's apps (optional)
+
+Zerostash also speaks Karakeep's API, so Karakeep's own clients work with your server, including its phone apps:
+
 - **Phone:** the Karakeep app for [iPhone](https://apps.apple.com/us/app/karakeep-app/id6479258022) or [Android](https://play.google.com/store/apps/details?id=app.hoarder.hoardermobile)
+- **Browser:** the Karakeep extension for [Chrome](https://chromewebstore.google.com/detail/karakeep/kgcjekpmcjjogibpjebkhaanilehneje) or [Firefox](https://addons.mozilla.org/en-US/firefox/addon/karakeep/) (the Zerostash extension is faster and reads previews from the page)
 
-Enter your Worker URL as the **server address**, then sign in with your secret as the **API key** (or as the **password**, with any email).
-
-Screens for features Zerostash doesn't have yet (highlights, sharing lists) show up empty.
+Enter your Worker URL as the **server address**, then sign in with your secret as the **API key** (or as the **password**, with any email). Screens for features Zerostash doesn't have yet (highlights, sharing lists) show up empty.
 
 Later updates: [Upgrading Zerostash](./upgrading.md).

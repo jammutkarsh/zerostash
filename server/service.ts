@@ -1,13 +1,14 @@
 // Use cases shared by both API adapters (tRPC and REST): domain writes plus their side effects
 // (link previews, files, AI, and events that drive rules and webhooks).
-import type { NewBookmarkInput, TagRef, UpdateBookmark } from '../shared/schemas';
+import type { NewBookmarkInput, Preview, TagRef, UpdateBookmark } from '../shared/schemas';
+import { aiProvider } from './ai';
 import { attachAsset, detachAsset, r2Key, replaceAsset, sweepOrphanAssets, uploadAsset } from './domain/assets';
-import { createBookmark, deleteBookmark, getBookmark, mustGetBookmark, updateBookmark } from './domain/bookmarks';
+import { applyCrawl, createBookmark, deleteBookmark, getBookmark, markBrowserFailed, mustGetBookmark, staleAi, updateBookmark } from './domain/bookmarks';
 import { addToList, removeFromList } from './domain/lists';
 import { updateTags } from './domain/tags';
-import { DomainError, notFound } from './domain/util';
+import { DomainError, marks, notFound } from './domain/util';
 import { emit } from './events';
-import { queueAi } from './jobs';
+import type { Job } from './jobs';
 import { crawl } from './og';
 
 export interface Ctx {
@@ -15,16 +16,43 @@ export interface Ctx {
 	waitUntil: (p: Promise<unknown>) => void;
 }
 
+/**
+ * Save path, kept to one D1 round trip before the reply (see createBookmark): the page fetch,
+ * the AI job and rule/webhook events all run after the response. A lost AI message is re-queued
+ * by the cron (requeueStaleAi).
+ */
 export async function addBookmark(ctx: Ctx, input: NewBookmarkInput) {
-	const res = await createBookmark(ctx.env.DB, input);
+	const res = await createBookmark(ctx.env.DB, input, { aiOn: !!aiProvider(ctx.env) });
 	if (res.alreadyExists) return res;
-	const { bookmark } = res;
-	if (bookmark.content.type === 'link') ctx.waitUntil(crawl(ctx, bookmark.id, bookmark.content.url));
-	const ai = await queueAi(ctx, [bookmark.id]);
-	// Clients poll while a status is pending, so the reply must already say so.
-	if (ai) res.bookmark = { ...bookmark, taggingStatus: ai.tag ? 'pending' : null, summarizationStatus: ai.summarize ? 'pending' : null };
-	ctx.waitUntil(emit(ctx, [{ bookmarkId: bookmark.id, rules: [{ type: 'bookmarkAdded' }], webhook: 'created' }]));
+	const { bookmark: b } = res;
+	if (b.content.type === 'link' && b.content.crawlStatus === 'pending') ctx.waitUntil(crawl(ctx, b.id, b.content.url));
+	const tag = b.taggingStatus === 'pending';
+	const summarize = b.summarizationStatus === 'pending';
+	if (tag || summarize) {
+		ctx.waitUntil(
+			ctx.env.JOBS.send({ kind: 'ai', bookmarkId: b.id, tag, summarize } satisfies Job).catch((err) =>
+				console.log(JSON.stringify({ msg: 'ai queue send failed; cron will retry', id: b.id, error: String(err) })),
+			),
+		);
+	}
+	ctx.waitUntil(emit(ctx, [{ bookmarkId: b.id, rules: [{ type: 'bookmarkAdded' }], webhook: 'created' }]));
 	return res;
+}
+
+/** A preview read by the Zerostash extension in the user's browser (or `null`: the browser couldn't read it either). */
+export async function browserPreview(ctx: Ctx, bookmarkId: string, og: Preview | null) {
+	if (!og || !(og.title || og.description || og.imageUrl)) return markBrowserFailed(ctx.env.DB, bookmarkId);
+	await applyCrawl(ctx.env.DB, bookmarkId, { title: og.title, description: og.description, imageUrl: og.imageUrl, siteName: og.siteName, faviconUrl: og.faviconUrl, author: og.author });
+	ctx.waitUntil(emit(ctx, [{ bookmarkId, webhook: 'crawled' }]));
+}
+
+/** Cron: AI jobs queued over 10 minutes ago that never finished (message lost) go back on the queue. */
+export async function requeueStaleAi(ctx: Ctx, now = Date.now()) {
+	const stale = await staleAi(ctx.env.DB, 10 * 60_000, 20, now);
+	if (!stale.length) return;
+	await ctx.env.JOBS.sendBatch(stale.map((s) => ({ body: { kind: 'ai', ...s } satisfies Job })));
+	// Not again next run while these are queued.
+	await ctx.env.DB.prepare(`UPDATE bookmarks SET updated_at = ? WHERE id IN (${marks(stale.length)})`).bind(now, ...stale.map((s) => s.bookmarkId)).run();
 }
 
 export async function editBookmark(ctx: Ctx, patch: UpdateBookmark) {

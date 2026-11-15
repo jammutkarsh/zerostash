@@ -3,7 +3,7 @@ import { purgeTombstones } from './domain/bookmarks';
 import { claimDueFeeds } from './domain/feeds';
 import { type Job, MAX_RETRIES, runJob } from './jobs';
 import { crawlBacklog } from './og';
-import { sweepUploads } from './service';
+import { requeueStaleAi, sweepUploads } from './service';
 
 // ponytail: 5 feeds per 5-minute run = 60 fetches/hour; raise if someone subscribes to more
 // feeds than that can cover hourly.
@@ -18,7 +18,7 @@ export default {
 			const ids = await claimDueFeeds(env.DB, FEEDS_PER_RUN);
 			if (ids.length) await env.JOBS.sendBatch(ids.map((feedId) => ({ body: { kind: 'feed', feedId } satisfies Job })));
 		};
-		ctx.waitUntil(Promise.all([crawlBacklog(c), purgeTombstones(env.DB), sweepUploads(env), queueFeeds()]));
+		ctx.waitUntil(Promise.all([crawlBacklog(c), purgeTombstones(env.DB), sweepUploads(env), queueFeeds(), requeueStaleAi(c)]));
 	},
 	async queue(batch, env, ctx) {
 		const c = { env, waitUntil: (p: Promise<unknown>) => ctx.waitUntil(p) };

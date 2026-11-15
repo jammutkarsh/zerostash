@@ -1,18 +1,31 @@
 import { isHttpUrl, parseOg, type OgData } from '../../../shared/og';
-import type { Bookmark, OgFields } from '../../../shared/schemas';
-import { server } from './api';
+import type { Bookmark, Preview } from '../../../shared/schemas';
+import { api } from './api';
 import { getSettings, isOwnServer } from './settings';
 
-/** Pick the fields the server accepts, dropping empty ones. */
-export function ogFields(og: OgData): OgFields {
-	const out: OgFields = {};
-	for (const key of ['url', 'title', 'description', 'imageUrl', 'siteName', 'faviconUrl'] as const) if (og[key]) out[key] = og[key];
+/**
+ * The server's preview fields, keeping only values it accepts (an invalid image address mustn't
+ * fail the whole save). Plain checks rather than the zod schema: zod would triple the popup's
+ * JavaScript. Limits mirror Preview in shared/schemas.ts.
+ */
+export function previewOf(og: OgData): Preview {
+	const text = (v: string | undefined, max: number) => v?.trim().slice(0, max) || undefined;
+	const link = (v: string | undefined) => (v && v.length <= 2048 && isHttpUrl(v) ? v : undefined);
+	const out: Preview = {
+		title: text(og.title, 500),
+		description: text(og.description, 2000),
+		imageUrl: link(og.imageUrl),
+		siteName: text(og.siteName, 200),
+		faviconUrl: link(og.faviconUrl),
+		author: text(og.author, 200),
+	};
+	for (const key of Object.keys(out) as (keyof Preview)[]) if (out[key] === undefined) delete out[key];
 	return out;
 }
 
 /**
- * Read OpenGraph from the open tab. Runs with `activeTab` (granted by the click), sees the
- * final post-redirect page, and is parsed with the same parser the server uses.
+ * Read the open tab's preview. Runs with `activeTab` (granted by the click), sees the final
+ * post-redirect page and the logged-in version of it, and uses the server's own parser.
  */
 async function readTab(tabId: number): Promise<{ url: string; og: OgData } | null> {
 	try {
@@ -23,37 +36,50 @@ async function readTab(tabId: number): Promise<{ url: string; og: OgData } | nul
 		const page = result?.result as { url: string; head: string } | undefined;
 		return page ? { url: page.url, og: parseOg(page.head, page.url) } : null;
 	} catch {
-		return null; // restricted pages (store, PDFs, browser UI) — the background/server path fills OG later
+		return null; // restricted pages (stores, PDFs, browser UI): the server fills the preview
 	}
 }
 
-/** Saves the tab, or returns null (silently) for the user's own Zerostash pages. */
-export async function saveTab(tab: chrome.tabs.Tab): Promise<{ bookmark: Bookmark; alreadyExists: boolean } | null> {
-	if (isOwnServer(tab.url, await getSettings())) return null;
+type Saved = { bookmark: Bookmark; alreadyExists: boolean };
+
+const split = ({ alreadyExists, ...bookmark }: Bookmark & { alreadyExists: boolean }): Saved => ({ bookmark, alreadyExists });
+
+/** Asks the background to fetch missing previews now (from the user's browser). */
+const enrichSoon = (b: Bookmark) => {
+	if (b.content.type === 'link' && b.content.crawlStatus !== 'success') void chrome.runtime.sendMessage({ type: 'enrich' }).catch(() => {});
+};
+
+/** Saves the tab with the preview read from it, or returns null (silently) for the user's own Zerostash pages. */
+export async function saveTab(tab: chrome.tabs.Tab): Promise<Saved | null> {
+	const settings = await getSettings();
+	if (isOwnServer(tab.url, settings)) return null;
 	const page = tab.id !== undefined ? await readTab(tab.id) : null;
 	const url = page?.url ?? tab.url;
 	if (!isHttpUrl(url)) throw new Error('Only web pages (http:// and https://) can be saved.');
-	if (isOwnServer(url, await getSettings())) return null;
-	const og = page ? ogFields(page.og) : {};
-	og.title ??= tab.title || undefined;
-	const result = await server.create({ type: 'link', url, source: 'extension', og: page ? { source: 'tab', ...og } : undefined });
-	if (result.bookmark.ogStatus === 'pending') void chrome.runtime.sendMessage({ type: 'enrich' }).catch(() => {});
-	return result;
+	if (isOwnServer(url, settings)) return null;
+	const og = page ? previewOf(page.og) : {};
+	og.title ??= tab.title?.slice(0, 500) || undefined;
+	const saved = split(await (await api()).bookmarks.createBookmark.mutate({ type: 'link', url, source: 'extension', og }));
+	enrichSoon(saved.bookmark);
+	return saved;
 }
 
-export async function saveLink(url: string) {
+export async function saveLink(url: string): Promise<Saved | null> {
 	if (!isHttpUrl(url)) throw new Error('Only http(s) links can be saved.');
 	if (isOwnServer(url, await getSettings())) return null;
-	const result = await server.create({ type: 'link', url, source: 'extension' });
-	return result;
+	const saved = split(await (await api()).bookmarks.createBookmark.mutate({ type: 'link', url, source: 'extension' }));
+	enrichSoon(saved.bookmark);
+	return saved;
 }
 
-export async function saveSelection(text: string, tab?: chrome.tabs.Tab) {
-	return server.create({
-		type: 'text',
-		text: text.slice(0, 20_000),
-		title: tab?.title?.slice(0, 500) || undefined,
-		note: isHttpUrl(tab?.url) ? `From ${tab.url}` : undefined,
-		source: 'extension',
-	});
+export async function saveSelection(text: string, tab?: chrome.tabs.Tab): Promise<Saved> {
+	return split(
+		await (await api()).bookmarks.createBookmark.mutate({
+			type: 'text',
+			text: text.slice(0, 20_000),
+			title: tab?.title?.slice(0, 500) || undefined,
+			sourceUrl: isHttpUrl(tab?.url) ? tab.url : undefined,
+			source: 'extension',
+		}),
+	);
 }

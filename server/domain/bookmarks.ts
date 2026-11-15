@@ -186,23 +186,39 @@ export async function checkUrl(db: D1Database, url: string): Promise<string | nu
 
 // ---- writes ----
 
+/**
+ * One D1 round trip for the common case: insert and read back in a single batch.
+ * - `aiOn`: AI is configured; the AI statuses are then set to pending right in the INSERT, from
+ *   the stored user settings (json_extract), so no separate settings read or update is needed.
+ * - `input.og`: a preview read by the Zerostash extension; the link is saved as already crawled.
+ * A duplicate URL returns the existing bookmark (Karakeep's alreadyExists), filling its preview
+ * from `og` if it has none yet.
+ */
 export async function createBookmark(
 	db: D1Database,
 	input: NewBookmarkInput,
+	opts: { aiOn?: boolean } = {},
 	now = Date.now(),
 ): Promise<{ bookmark: Bookmark; alreadyExists: boolean }> {
 	const id = crypto.randomUUID();
 	const createdAt = input.createdAt?.getTime() ?? now;
+	const link = input.type === 'link';
+	const og = link ? input.og : undefined;
+	const hasPreview = !!og && !!(og.title || og.description || og.imageUrl);
 	if (input.type === 'asset') {
 		const asset = await db.prepare('SELECT bookmark_id FROM assets WHERE id = ?').bind(input.assetId!).first<{ bookmark_id: string | null }>();
 		if (!asset) throw notFound('Asset');
 		if (asset.bookmark_id) throw new DomainError('CONFLICT', 'That asset already belongs to a bookmark.');
 	}
+	const aiOn = opts.aiOn ? 1 : 0;
+	const aiStatus = (field: string) =>
+		`CASE WHEN ? AND coalesce(json_extract((SELECT value FROM settings WHERE key = 'user'), '$.${field}'), 1) THEN 'pending' END`;
 	const insert = db
 		.prepare(
-			`INSERT INTO bookmarks (id, type, title, note, summary, archived, favourited, source, url, crawl_status, text, source_url,
-				asset_id, asset_type, file_name, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`INSERT INTO bookmarks (id, type, title, note, summary, archived, favourited, source, url, text, source_url,
+				asset_id, asset_type, file_name, link_title, description, image_url, publisher, favicon, author, crawl_status, crawled_at,
+				tagging_status, summarization_status, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${aiStatus('autoTaggingEnabled')}, ${aiStatus('autoSummarizationEnabled')}, ?, ?)
 			 ON CONFLICT (url) WHERE type = 'link' DO NOTHING`,
 		)
 		.bind(
@@ -214,27 +230,42 @@ export async function createBookmark(
 			input.archived ? 1 : 0,
 			input.favourited ? 1 : 0,
 			input.source ?? 'api',
-			input.type === 'link' ? input.url! : null,
-			input.type === 'link' ? 'pending' : null,
+			link ? input.url! : null,
 			input.type === 'text' ? input.text! : null,
-			input.type === 'link' ? null : (input.sourceUrl ?? null),
+			link ? null : (input.sourceUrl ?? null),
 			input.type === 'asset' ? input.assetId! : null,
 			input.type === 'asset' ? input.assetType! : null,
 			input.type === 'asset' ? (input.fileName ?? null) : null,
+			og?.title || null,
+			og?.description || null,
+			og?.imageUrl || null,
+			og?.siteName || null,
+			og?.faviconUrl || null,
+			og?.author || null,
+			link ? (hasPreview ? 'success' : 'pending') : null,
+			hasPreview ? now : null,
+			aiOn,
+			aiOn,
 			createdAt,
 			now,
 		);
-	const [inserted] = await db.batch([
+	const res = await db.batch([
 		insert,
 		...(input.type === 'asset'
 			? [db.prepare(`UPDATE assets SET bookmark_id = ?, asset_type = 'bookmarkAsset' WHERE id = ?`).bind(id, input.assetId!)]
 			: []),
+		// The new row, or (duplicate URL) the one already saved.
+		db.prepare(`SELECT ${COLUMNS} FROM bookmarks b WHERE b.id = ? OR (b.url = ? AND b.type = 'link') LIMIT 1`).bind(id, link ? input.url! : null),
 	]);
-	if (inserted.meta.changes === 1) return { bookmark: (await getBookmark(db, id))!, alreadyExists: false };
-	// Duplicate URL: Karakeep returns the existing bookmark with alreadyExists.
-	const existing = await checkUrl(db, input.url!);
-	if (!existing) throw new Error('insert ignored but no existing bookmark found');
-	return { bookmark: (await getBookmark(db, existing))!, alreadyExists: true };
+	const row = (res[res.length - 1].results as unknown as Row[])[0];
+	if (!row) throw new Error('insert ignored but no existing bookmark found');
+	const bookmark = toBookmark(row);
+	const alreadyExists = res[0].meta.changes === 0;
+	if (alreadyExists && hasPreview && bookmark.content.type === 'link' && bookmark.content.crawlStatus !== 'success') {
+		await applyCrawl(db, bookmark.id, og!, now);
+		return { bookmark: (await getBookmark(db, bookmark.id))!, alreadyExists };
+	}
+	return { bookmark, alreadyExists };
 }
 
 export async function updateBookmark(db: D1Database, patch: UpdateBookmark, now = Date.now()): Promise<Bookmark> {
@@ -326,7 +357,8 @@ export async function recrawl(db: D1Database, id: string, now = Date.now()): Pro
 /** Pending links whose immediate fetch failed (or never ran), oldest first. */
 export async function pendingCrawls(db: D1Database, limit: number, now = Date.now()): Promise<{ id: string; url: string }[]> {
 	const { results } = await db
-		.prepare(`SELECT id, url FROM bookmarks WHERE crawl_status = 'pending' AND updated_at < ? ORDER BY created_at LIMIT ?`)
+		// The IN term matches the partial index's WHERE, so SQLite can use bookmarks_preview_todo.
+		.prepare(`SELECT id, url FROM bookmarks WHERE crawl_status IN ('pending', 'failure') AND crawl_status = 'pending' AND updated_at < ? ORDER BY created_at LIMIT ?`)
 		.bind(now - CRAWL_RETRY_AFTER_MS, limit)
 		.all<{ id: string; url: string }>();
 	return results;
@@ -389,4 +421,38 @@ export async function finishAi(
 		)
 		.bind(r.tagging ?? null, r.summarization ?? null, r.summary ?? null, r.summary ?? null, now, id)
 		.run();
+}
+
+// ---- previews from the Zerostash extension ----
+
+/** crawl_attempts value meaning "a browser tried too", so the extension isn't offered it again. */
+export const BROWSER_TRIED = 99;
+
+/** Links without a preview that the extension hasn't tried yet, oldest first. */
+export async function previewsNeeded(db: D1Database, limit: number): Promise<{ id: string; url: string }[]> {
+	const { results } = await db
+		.prepare(`SELECT id, url FROM bookmarks WHERE crawl_status IN ('pending', 'failure') AND crawl_attempts < ? ORDER BY created_at LIMIT ?`)
+		.bind(BROWSER_TRIED, limit)
+		.all<{ id: string; url: string }>();
+	return results;
+}
+
+/** The browser couldn't read the page either: final. */
+export async function markBrowserFailed(db: D1Database, id: string, now = Date.now()): Promise<void> {
+	await db
+		.prepare(`UPDATE bookmarks SET crawl_status = 'failure', crawl_attempts = ?, updated_at = ? WHERE id = ? AND crawl_status IN ('pending', 'failure')`)
+		.bind(BROWSER_TRIED, now, id)
+		.run();
+}
+
+/** Bookmarks whose AI job was queued over `olderThanMs` ago and never finished (its message was lost). */
+export async function staleAi(db: D1Database, olderThanMs: number, limit: number, now = Date.now()) {
+	const { results } = await db
+		.prepare(
+			`SELECT id, tagging_status, summarization_status FROM bookmarks
+			 WHERE (tagging_status = 'pending' OR summarization_status = 'pending') AND updated_at < ? LIMIT ?`,
+		)
+		.bind(now - olderThanMs, limit)
+		.all<{ id: string; tagging_status: Status | null; summarization_status: Status | null }>();
+	return results.map((r) => ({ bookmarkId: r.id, tag: r.tagging_status === 'pending', summarize: r.summarization_status === 'pending' }));
 }

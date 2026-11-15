@@ -1,10 +1,13 @@
 {
 	"name": "zerostash",
-	"version": "1.0.0",
-	"description": "Karakeep-compatible bookmarks on Cloudflare's free tier: Worker + D1 + R2, ₹0/month. Works with Karakeep's extension and apps.",
+	"version": "1.1.0",
+	"description": "Bookmarks on Cloudflare's free tier: Worker + D1 + R2, ₹0/month. A fast browser extension, and Karakeep-compatible so Karakeep's apps work too.",
 	"private": true,
 	"type": "module",
 	"license": "MIT",
+	"workspaces": [
+		"extension"
+	],
 	"scripts": {
 		"dev": "bun scripts/openapi.ts && vite",
 		"build": "bun scripts/openapi.ts && vite build",
@@ -12,8 +15,10 @@
 		"db:migrate:local": "wrangler d1 migrations apply DB --local",
 		"types": "wrangler types server/worker-configuration.d.ts",
 		"check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.worker.json",
-		"test": "bun test shared server web",
-		"smoke": "bun scripts/smoke.ts"
+		"test": "bun test shared server web extension/src",
+		"smoke": "bun scripts/smoke.ts",
+		"ext:build": "bun run --filter zerostash-extension build",
+		"ext:zip": "bun run --filter zerostash-extension zip"
 	},
 	"packageManager": "bun@1.4.4",
 	"engines": {

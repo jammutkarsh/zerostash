@@ -7,7 +7,7 @@ import { deleteTag, getTag, listTags, mergeTags, renameTag, updateTags } from '.
 import { DomainError } from './util';
 
 const T0 = Date.UTC(2026, 10, 13);
-const add = (db: D1Database, input: Parameters<typeof NewBookmark.parse>[0], now = T0) => createBookmark(db, NewBookmark.parse(input), now);
+const add = (db: D1Database, input: Parameters<typeof NewBookmark.parse>[0], now = T0) => createBookmark(db, NewBookmark.parse(input), {}, now);
 const link = (n: number) => ({ type: 'link' as const, url: `https://example.com/${n}`, createdAt: new Date(T0 + n) });
 const code = (p: Promise<unknown>) => p.then(() => 'ok', (e) => (e instanceof DomainError ? e.code : String(e)));
 
@@ -165,4 +165,48 @@ test('assets: upload rules, asset bookmarks, attach/replace/detach, delete, orph
 	const orphan = await up(file('lost.png', 'image/png'), T0);
 	expect(await sweepOrphanAssets(db, T0 + ORPHAN_AFTER_MS - 1)).toEqual([]);
 	expect(await sweepOrphanAssets(db, T0 + ORPHAN_AFTER_MS + 1)).toContain(orphan.assetId);
+});
+
+test('fast save: AI statuses from settings in the INSERT, extension preview skips the crawl, duplicates get a missing preview', async () => {
+	const { updateSettings } = await import('./settings');
+	const { previewsNeeded, markBrowserFailed, staleAi } = await import('./bookmarks');
+	const db = testDb();
+	const save = (input: Parameters<typeof NewBookmark.parse>[0], aiOn = true) => createBookmark(db, NewBookmark.parse(input), { aiOn }, T0);
+	const statuses = (b: { taggingStatus: unknown; summarizationStatus: unknown }) => [b.taggingStatus, b.summarizationStatus];
+
+	const a = (await save(link(1))).bookmark;
+	expect(statuses(a)).toEqual(['pending', 'pending']); // settings default to on
+	const b = (await save(link(2), false)).bookmark;
+	expect(statuses(b)).toEqual([null, null]); // AI not configured
+	await updateSettings(db, { autoTaggingEnabled: false });
+	const c = (await save(link(3))).bookmark;
+	expect(statuses(c)).toEqual([null, 'pending']);
+
+	const d = (await save({ ...link(4), og: { title: 'From the tab', imageUrl: 'https://example.com/i.png', siteName: 'Ex' } })).bookmark;
+	expect(d.content).toMatchObject({ type: 'link', title: 'From the tab', imageUrl: 'https://example.com/i.png', publisher: 'Ex', crawlStatus: 'success' });
+	expect(d.title).toBeNull(); // the user's own title stays unset
+
+	// Saving a known URL again with a preview fills it in when it had none.
+	expect(await save({ ...link(1), og: { title: 'Now with a title' } })).toMatchObject({
+		alreadyExists: true,
+		bookmark: { id: a.id, content: { title: 'Now with a title', crawlStatus: 'success' } },
+	});
+
+	// Preview backfill: links without a preview are offered to the extension until a browser fails too.
+	const offered = async () => (await previewsNeeded(db, 50)).map((x) => x.id).sort();
+	expect(await offered()).toEqual([b.id, c.id].sort());
+	await markBrowserFailed(db, c.id, T0);
+	expect(await offered()).toEqual([b.id]);
+	expect((await getBookmark(db, c.id))!.content).toMatchObject({ crawlStatus: 'failure' });
+
+	// Lost AI jobs: pending over 10 minutes are found, with what's still pending; fresh ones aren't.
+	expect(await staleAi(db, 10 * 60_000, 50, T0 + 60_000)).toEqual([]);
+	const stale = (await staleAi(db, 10 * 60_000, 50, T0 + 11 * 60_000)).sort((x, y) => (x.bookmarkId < y.bookmarkId ? -1 : 1));
+	expect(stale).toEqual(
+		[
+			{ bookmarkId: a.id, tag: true, summarize: true },
+			{ bookmarkId: c.id, tag: false, summarize: true },
+			{ bookmarkId: d.id, tag: false, summarize: true },
+		].sort((x, y) => (x.bookmarkId < y.bookmarkId ? -1 : 1)),
+	);
 });

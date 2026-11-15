@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.2.0 to publish a GitHub release with the extension builds.
+# Push a tag like v1.1.0 to publish a GitHub release with the extension builds.
 # Deploys don't happen here: Cloudflare Workers Builds deploys every push to main (and
 # applies database migrations). So bump "version" in package.json on main first; that
 # push deploys it, and this tag announces it (servers on older versions see an update notice).

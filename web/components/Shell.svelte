@@ -293,7 +293,7 @@
 		<Menu label="Resources" buttonClass="{item} {mini ? 'justify-center px-0' : ''} {idle}">
 			{#snippet trigger()}<LifeBuoy class="size-4 shrink-0" />{#if !mini}Resources{/if}{/snippet}
 			{#snippet children(close)}
-				<a href="{REPO}#use-karakeeps-apps" target="_blank" rel="noopener" onclick={close} role="menuitem" class="{item} {idle}">
+				<a href="{REPO}#browser-extension-and-apps" target="_blank" rel="noopener" onclick={close} role="menuitem" class="{item} {idle}">
 					<Smartphone class="size-4" />Browser extension & mobile apps
 				</a>
 				<a href="/api-docs" target="_blank" onclick={close} role="menuitem" class="{item} {idle}"><Braces class="size-4" />API documentation</a>
