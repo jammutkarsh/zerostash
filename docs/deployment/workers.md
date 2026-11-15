@@ -52,9 +52,9 @@ Optional, for AI tags and summaries with your own model instead of the free Work
 | `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` |
 | `OPENAI_API_KEY`    | `gpt-6.1-terra`    |
 | `GEMINI_API_KEY`    | `gemini-3.8-flash` |
-| `AI_API_KEY` + `AI_BASE_URL` + `AI_MODEL` | Any other OpenAI-compatible API (OpenRouter, DeepSeek, ...): you pick the model |
+| `AI_API_KEY` + `AI_BASE_URL` | Any other OpenAI-compatible API (OpenRouter, DeepSeek, ...): you pick the model |
 
-`AI_MODEL` swaps in a different model for whichever provider is in use. `ZEROSTASH_AI=off` turns AI off entirely.
+Change the model any time in the web app's **Settings** (it checks the model with one small request before saving), or set `AI_MODEL`. `ZEROSTASH_AI=off` turns AI off entirely.
 
 You can also turn automatic tagging and summaries off in the web app's **Settings**.
 

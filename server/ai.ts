@@ -2,25 +2,27 @@
 //   1. Anthropic          ANTHROPIC_API_KEY   default claude-sonnet-5-5
 //   2. OpenAI             OPENAI_API_KEY      default gpt-6.1-terra
 //   3. Gemini             GEMINI_API_KEY      default gemini-3.8-flash (Google's OpenAI-compatible API)
-//   4. Any other OpenAI-compatible API: AI_API_KEY + AI_BASE_URL + AI_MODEL (no default model)
+//   4. Any other OpenAI-compatible API: AI_API_KEY + AI_BASE_URL (no default model)
 //   5. Workers AI (the AI binding; free daily quota)
-// AI_MODEL overrides the default model of whichever provider is in use. ZEROSTASH_AI=off turns
-// it all off. Defaults are each vendor's cheap-but-smart tier. Page text comes from Workers
+// Model, first set wins: the one picked in the web app's Settings (per provider, stored in
+// user settings), AI_MODEL, the provider's default. ZEROSTASH_AI=off turns it all off. Defaults are each vendor's cheap-but-smart tier. Page text comes from Workers
 // AI's toMarkdown (free for HTML/PDF). The prompt is our own.
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { isPrivateHost } from '../shared/og';
 import type { Bookmark } from '../shared/schemas';
 import { r2Key } from './domain/assets';
+import type { AI_PROVIDERS, UserSettings } from './domain/settings';
 
-export type Provider = 'anthropic' | 'openai' | 'gemini' | 'custom' | 'workers-ai';
+export type Provider = (typeof AI_PROVIDERS)[number];
+type Prompt = { system: string; user: string };
 
 export function aiProvider(env: Env): Provider | null {
 	if (env.ZEROSTASH_AI === 'off') return null;
 	if (env.ANTHROPIC_API_KEY) return 'anthropic';
 	if (env.OPENAI_API_KEY) return 'openai';
 	if (env.GEMINI_API_KEY) return 'gemini';
-	if (env.AI_API_KEY && env.AI_BASE_URL && env.AI_MODEL) return 'custom';
+	if (env.AI_API_KEY && env.AI_BASE_URL) return 'custom';
 	return env.AI ? 'workers-ai' : null;
 }
 
@@ -34,8 +36,19 @@ const DEFAULT_MODEL: Record<Provider, string> = {
 	'workers-ai': '@cf/google/gemma-4-26b-a4b-it',
 };
 
-/** The model a provider runs: AI_MODEL if set, else the provider's default. */
-export const aiModel = (env: Env, p: Provider) => env.AI_MODEL || DEFAULT_MODEL[p];
+export const defaultModel = (env: Env, p: Provider) => env.AI_MODEL || DEFAULT_MODEL[p];
+
+/** The model a provider runs: picked in Settings, else AI_MODEL, else the provider's default. */
+export const aiModel = (env: Env, p: Provider, picked?: UserSettings['aiModels']) => picked?.[p] || defaultModel(env, p);
+
+/** Known-good choices offered in Settings (any other model id can be typed in). */
+export const MODEL_SUGGESTIONS: Record<Provider, string[]> = {
+	anthropic: ['claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5'],
+	openai: ['gpt-6.1-terra'],
+	gemini: ['gemini-3.8-flash'],
+	custom: [],
+	'workers-ai': ['@cf/google/gemma-4-26b-a4b-it', '@cf/qwen/qwen3.8-27b', '@cf/zai-org/glm-5.3', '@cf/deepseek-ai/deepseek-v4.1-flash-1017'],
+};
 
 const OPENAI_COMPATIBLE: Partial<Record<Provider, (env: Env) => { base: string; key: string }>> = {
 	openai: (env) => ({ base: 'https://api.openai.com/v1', key: env.OPENAI_API_KEY! }),
@@ -154,9 +167,8 @@ export function parseResult(raw: string): AiResult {
 
 // ---- providers ----
 
-async function viaAnthropic(env: Env, p: { system: string; user: string }): Promise<string> {
+async function viaAnthropic(env: Env, model: string, p: Prompt): Promise<string> {
 	const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-	const model = aiModel(env, 'anthropic');
 	const res = await client.beta.messages.create({
 		model,
 		max_tokens: 4000,
@@ -171,13 +183,13 @@ async function viaAnthropic(env: Env, p: { system: string; user: string }): Prom
 	return res.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
 }
 
-async function viaOpenAiCompatible(env: Env, provider: Provider, p: { system: string; user: string }): Promise<string> {
+async function viaOpenAiCompatible(env: Env, provider: Provider, model: string, p: Prompt): Promise<string> {
 	const { base, key } = OPENAI_COMPATIBLE[provider]!(env);
 	const res = await fetch(`${base}/chat/completions`, {
 		method: 'POST',
 		headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
 		body: JSON.stringify({
-			model: aiModel(env, provider),
+			model,
 			messages: [
 				{ role: 'system', content: p.system },
 				{ role: 'user', content: p.user },
@@ -191,8 +203,8 @@ async function viaOpenAiCompatible(env: Env, provider: Provider, p: { system: st
 	return body.choices?.[0]?.message?.content ?? '';
 }
 
-async function viaWorkersAi(env: Env, p: { system: string; user: string }): Promise<string> {
-	const out = (await env.AI.run(aiModel(env, 'workers-ai') as '@cf/google/gemma-4-26b-a4b-it', {
+async function viaWorkersAi(env: Env, model: string, p: Prompt): Promise<string> {
+	const out = (await env.AI.run(model as '@cf/google/gemma-4-26b-a4b-it', {
 		messages: [
 			{ role: 'system', content: p.system },
 			{ role: 'user', content: p.user },
@@ -205,16 +217,27 @@ async function viaWorkersAi(env: Env, p: { system: string; user: string }): Prom
 	return typeof reply === 'string' ? reply : JSON.stringify(reply);
 }
 
+async function complete(env: Env, provider: Provider, model: string, prompt: Prompt): Promise<AiResult> {
+	if (!model) throw new Error('No AI model chosen: pick one in Settings (or set AI_MODEL).');
+	const raw =
+		provider === 'anthropic' ? await viaAnthropic(env, model, prompt)
+		: provider === 'workers-ai' ? await viaWorkersAi(env, model, prompt)
+		: await viaOpenAiCompatible(env, provider, model, prompt);
+	return parseResult(raw);
+}
+
 /** Tags and a summary for one bookmark. Throws when the provider fails or answers badly. */
-export async function suggest(env: Env, b: Bookmark, existingTags: string[], lang: string): Promise<AiResult> {
+export async function suggest(env: Env, b: Bookmark, existingTags: string[], s: Pick<UserSettings, 'inferredTagLang' | 'aiModels'>): Promise<AiResult> {
 	const provider = aiProvider(env);
 	if (!provider) throw new Error('AI is off');
-	const prompt = buildPrompt(b, await contentText(env, b), existingTags, lang);
-	const raw =
-		provider === 'anthropic' ? await viaAnthropic(env, prompt)
-		: provider === 'workers-ai' ? await viaWorkersAi(env, prompt)
-		: await viaOpenAiCompatible(env, provider, prompt);
-	return parseResult(raw);
+	const prompt = buildPrompt(b, await contentText(env, b), existingTags, s.inferredTagLang || 'English');
+	return complete(env, provider, aiModel(env, provider, s.aiModels), prompt);
+}
+
+/** One small real request, so a mistyped or retired model is caught when it's picked, not on every save. */
+export async function checkModel(env: Env, provider: Provider, model: string): Promise<void> {
+	const sample = { title: 'Cloudflare D1', note: null, tags: [], content: { type: 'text', text: 'D1 is a serverless SQL database built on SQLite.', sourceUrl: null } } as unknown as Bookmark;
+	await complete(env, provider, model, buildPrompt(sample, '', [], 'English'));
 }
 
 // ---- tag style (Karakeep's user setting) ----

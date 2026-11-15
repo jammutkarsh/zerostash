@@ -32,7 +32,7 @@ import { getSettings, UpdateUserSettings, updateSettings } from './domain/settin
 import { userStats } from './domain/stats';
 import { createTag, deleteTag, deleteUnusedTags, getTag, listTags, mergeTags, renameTag } from './domain/tags';
 import { DomainError } from './domain/util';
-import { aiModel, aiProvider } from './ai';
+import { aiModel, aiProvider, checkModel, defaultModel, MODEL_SUGGESTIONS } from './ai';
 import { summarizeNow } from './jobs';
 import { addBookmark, attachFile, changeTags, type Ctx, detachFile, editBookmark, listAdd, listRemove, removeBookmark, replaceFile } from './service';
 import { allFeeds, createFeed, deleteFeed, getFeed, updateFeed } from './domain/feeds';
@@ -68,6 +68,19 @@ async function mustMatch(ctx: TrpcContext, given: string): Promise<void> {
 
 const bookmarkId = z.object({ bookmarkId: z.string() });
 const pageSize = (limit: number | undefined) => Math.min(limit ?? 20, LIMITS.pageSize);
+
+async function aiStatus(env: Env) {
+	const ai = aiProvider(env);
+	const { aiModels } = await getSettings(env.DB);
+	return {
+		version: pkg.version,
+		ai,
+		model: ai ? aiModel(env, ai, aiModels) : null,
+		defaultModel: ai ? defaultModel(env, ai) : null,
+		picked: ai ? (aiModels?.[ai] ?? null) : null,
+		suggestions: ai ? MODEL_SUGGESTIONS[ai] : [],
+	};
+}
 
 export const appRouter = t.router({
 	apiKeys: t.router({
@@ -252,9 +265,24 @@ export const appRouter = t.router({
 
 	zerostash: t.router({
 		/** What this server can do, for the web app's settings page. */
-		status: authed.query(({ ctx }) => {
-			const ai = aiProvider(ctx.env);
-			return { version: pkg.version, ai, model: ai ? aiModel(ctx.env, ai) : null };
+		status: authed.query(async ({ ctx }) => aiStatus(ctx.env)),
+		/** Pick the model for the current AI provider (null = back to the default). Tested before it's saved. */
+		setAiModel: authed.input(z.object({ model: z.string().trim().min(1).max(200).nullable() })).mutation(async ({ ctx, input }) => {
+			const provider = aiProvider(ctx.env);
+			if (!provider) throw new TRPCError({ code: 'BAD_REQUEST', message: 'AI is turned off on this server (ZEROSTASH_AI=off).' });
+			if (input.model) {
+				try {
+					await checkModel(ctx.env, provider, input.model);
+				} catch (err) {
+					throw new TRPCError({ code: 'BAD_REQUEST', message: `${input.model} didn't work: ${String(err).replace(/^Error: /, '').slice(0, 300)}` });
+				}
+			}
+			const { aiModels } = await getSettings(ctx.env.DB);
+			const next = { ...aiModels };
+			if (input.model) next[provider] = input.model;
+			else delete next[provider];
+			await updateSettings(ctx.env.DB, { aiModels: Object.keys(next).length ? next : null });
+			return aiStatus(ctx.env);
 		}),
 		/** Delta sync: what changed since `since` (the previous call's `cursor`). */
 		changes: authed.input(z.object({ since: z.number().int().min(0).optional() })).query(async ({ ctx, input }) => {

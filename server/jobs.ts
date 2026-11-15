@@ -44,7 +44,7 @@ async function runAi(ctx: Ctx, job: Extract<Job, { kind: 'ai' }>): Promise<void>
 	// Curated tags (a Karakeep setting): the AI may only pick from these.
 	const curated = s.curatedTagIds?.length ? await listTags(db, { ids: s.curatedTagIds.slice(0, 90) }) : null;
 	const known = curated ?? (await listTags(db, { limit: 50 }));
-	const result = await suggest(ctx.env, b, known.map((t) => t.name), s.inferredTagLang || 'English');
+	const result = await suggest(ctx.env, b, known.map((t) => t.name), s);
 	let added: string[] = [];
 	if (job.tag) {
 		const allowed = curated ? new Map(curated.map((t) => [t.name.toLowerCase(), t.name])) : null;
@@ -151,7 +151,7 @@ export async function summarizeNow(env: Env, bookmarkId: string) {
 	const s = await getSettings(env.DB);
 	await markAiPending(env.DB, [b.id], false, true);
 	try {
-		const result = await suggest(env, b, [], s.inferredTagLang || 'English');
+		const result = await suggest(env, b, [], s);
 		await env.DB.prepare('UPDATE bookmarks SET summary = ?, summarization_status = ?, updated_at = ? WHERE id = ?')
 			.bind(result.summary || null, result.summary ? 'success' : 'failure', Date.now(), b.id)
 			.run();

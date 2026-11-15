@@ -1,5 +1,8 @@
 // User settings in Karakeep's shape, stored as one JSON row of overrides on top of DEFAULTS.
+// Plus one Zerostash field, aiModels: the model picked per AI provider in the web app.
 import { z } from 'zod';
+
+export const AI_PROVIDERS = ['anthropic', 'openai', 'gemini', 'custom', 'workers-ai'] as const;
 
 const Fields = z.object({
 	bookmarkClickAction: z.enum(['open_original_link', 'expand_bookmark_preview']),
@@ -16,9 +19,12 @@ const Fields = z.object({
 	tagStyle: z.enum(['lowercase-hyphens', 'lowercase-spaces', 'lowercase-underscores', 'titlecase-spaces', 'titlecase-hyphens', 'camelCase', 'as-generated']),
 	curatedTagIds: z.array(z.string().max(64)).max(500).nullable(),
 	inferredTagLang: z.string().max(32).nullable(),
+	aiModels: z.partialRecord(z.enum(AI_PROVIDERS), z.string().trim().min(1).max(200)).nullable(),
 });
 export type UserSettings = z.infer<typeof Fields>;
-export const UpdateUserSettings = Fields.partial();
+/** What clients may change through users.updateSettings; models go through zerostash.setAiModel, which tests them first. */
+export const UpdateUserSettings = Fields.omit({ aiModels: true }).partial();
+const StoredSettings = Fields.partial();
 
 const DEFAULTS: UserSettings = {
 	bookmarkClickAction: 'open_original_link',
@@ -35,13 +41,14 @@ const DEFAULTS: UserSettings = {
 	tagStyle: 'as-generated',
 	curatedTagIds: null,
 	inferredTagLang: null,
+	aiModels: null,
 };
 
 const KEY = 'user';
 
 async function overrides(db: D1Database): Promise<Partial<UserSettings>> {
 	const raw = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(KEY).first<string>('value');
-	const parsed = UpdateUserSettings.safeParse(raw ? JSON.parse(raw) : {});
+	const parsed = StoredSettings.safeParse(raw ? JSON.parse(raw) : {});
 	return parsed.success ? parsed.data : {};
 }
 

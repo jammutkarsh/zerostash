@@ -45,6 +45,9 @@ check('cookie session works', (await client({ cookie }).users.whoami.query()).id
 check('bad web login → 401', (await fetch(`${BASE}/api/auth/login`, { method: 'POST', body: '{"secret":"nope"}' })).status === 401);
 check('settings defaults', (await k.users.settings.query()).archiveDisplayBehaviour === 'show');
 check('client config', (await k.config.clientConfig.query()).auth.disableSignups === true);
+const aiStatus = await k.zerostash.status.query();
+check('AI status', 'suggestions' in aiStatus && (aiStatus.ai === null || !!aiStatus.model), aiStatus);
+check('an unusable AI model is refused, not saved', (await code(k.zerostash.setAiModel.mutate({ model: 'no-such-model-zerostash-smoke' }))) === 'BAD_REQUEST' && (await k.zerostash.status.query()).model === aiStatus.model);
 
 // ---- bookmarks ----
 const url = `https://example.com/smoke-${run}`;

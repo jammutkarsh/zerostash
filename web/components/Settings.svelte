@@ -11,7 +11,10 @@
 
 	// Server features that live outside the bookmark grid: AI, RSS feeds, rules, webhooks.
 	type Settings = Awaited<ReturnType<typeof api.users.settings.query>>;
-	let status = $state<{ version: string; ai: string | null; model: string | null } | null>(null);
+	type Status = Awaited<ReturnType<typeof api.zerostash.status.query>>;
+	let status = $state<Status | null>(null);
+	let modelDraft = $state('');
+	let testing = $state(false);
 	let settings = $state<Settings | null>(null);
 	let feeds = $state<Feed[]>([]);
 	let rules = $state<Rule[]>([]);
@@ -31,6 +34,22 @@
 		}
 	}
 	onMount(load);
+	$effect(() => {
+		if (status && !testing) modelDraft = status.model ?? '';
+	});
+
+	/** Saving tests the model with one small request first; a bad id never gets stored. */
+	async function saveModel(model: string | null) {
+		testing = true;
+		try {
+			status = await api.zerostash.setAiModel.mutate({ model });
+			toast(model ? `Now using ${model}.` : 'Back to the default model.', 2500);
+		} catch (e) {
+			toast(errorMessage(e), 8000);
+		} finally {
+			testing = false;
+		}
+	}
 
 	/** Run a change, report failures, reload. */
 	async function run(fn: () => Promise<unknown>, done?: string) {
@@ -179,9 +198,21 @@
 		<h2 class="font-semibold">AI tags & summaries</h2>
 		{#if status}
 			<p class="text-sm text-muted-foreground">
-				{#if status.ai}Using <b class="text-foreground">{AI_NAMES[status.ai]}</b> (<code>{status.model}</code>). Add <code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code> or <code>GEMINI_API_KEY</code> as a Worker secret to use your own model; <code>AI_MODEL</code> picks a different one.
+				{#if status.ai}Using <b class="text-foreground">{AI_NAMES[status.ai]}</b>. Add <code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code> or <code>GEMINI_API_KEY</code> as a Worker secret to switch provider.
 				{:else}Off on this server (<code>ZEROSTASH_AI=off</code>).{/if}
 			</p>
+			{#if status.ai}
+				<form onsubmit={(e) => (e.preventDefault(), modelDraft.trim() && modelDraft.trim() !== status?.model && saveModel(modelDraft.trim()))} class="flex flex-wrap items-center gap-2 text-sm">
+					<label for="ai-model">Model</label>
+					<input id="ai-model" bind:value={modelDraft} list="ai-models" required maxlength="200" disabled={testing} placeholder={status.defaultModel || 'model id'} class="{input} min-w-56 flex-1 font-mono" />
+					<datalist id="ai-models">{#each status.suggestions as m (m)}<option value={m}></option>{/each}</datalist>
+					<button disabled={testing || !modelDraft.trim() || modelDraft.trim() === status.model} class={btn}>{testing ? 'Testing…' : 'Save'}</button>
+					{#if status.picked && status.defaultModel}
+						<button type="button" disabled={testing} onclick={() => saveModel(null)} class="rounded-md px-2 py-2 text-muted-foreground hover:bg-muted">Use default ({status.defaultModel})</button>
+					{/if}
+				</form>
+				<p class="text-xs text-muted-foreground">Any model id your provider offers works; saving checks it with one small request first.</p>
+			{/if}
 		{/if}
 		{#if settings}
 			{@const s = settings}
