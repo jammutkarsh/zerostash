@@ -18,7 +18,7 @@ self.addEventListener('fetch', (event) => {
 	const req = event.request;
 	const url = new URL(req.url);
 	if (req.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
-	// Every app route serves the same single-page shell; /privacy-policy is rendered by the Worker.
+	// Every app route serves the same single-page shell; /privacy-policy is its own static page.
 	if (req.mode === 'navigate' && url.pathname !== '/privacy-policy') event.respondWith(shell(event));
 	else if (url.pathname.startsWith('/assets/')) event.respondWith(asset(req));
 });

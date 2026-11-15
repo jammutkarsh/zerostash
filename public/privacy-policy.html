@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Zerostash Privacy Policy</title>
+		<meta name="description" content="How the Zerostash browser extension and the Zerostash server handle your data." />
+		<link rel="canonical" href="https://zerostash.utkarshchourasia.in/privacy-policy" />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<style>
+			:root {
+				--bg: #f7f7f7;
+				--fg: #18181b;
+				--muted: #52525b;
+				--card: #ffffff;
+				--border: #e4e4e7;
+				--link: #b45309;
+				color-scheme: light;
+			}
+			@media (prefers-color-scheme: dark) {
+				:root:not([data-theme='light']) {
+					--bg: #09090b;
+					--fg: #f4f4f5;
+					--muted: #a1a1aa;
+					--card: #18181b;
+					--border: #27272a;
+					--link: #fbbf24;
+					color-scheme: dark;
+				}
+			}
+			:root[data-theme='dark'] {
+				--bg: #09090b;
+				--fg: #f4f4f5;
+				--muted: #a1a1aa;
+				--card: #18181b;
+				--border: #27272a;
+				--link: #fbbf24;
+				color-scheme: dark;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				background: var(--bg);
+				color: var(--fg);
+				font: 16px/1.65 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+			}
+			main {
+				max-width: 46rem;
+				margin: 0 auto;
+				padding: 2.5rem 1rem 4rem;
+			}
+			h1 {
+				font-size: 1.9rem;
+				line-height: 1.2;
+				margin: 0 0 0.25rem;
+			}
+			h2 {
+				font-size: 1.15rem;
+				margin: 2.25rem 0 0.5rem;
+			}
+			p,
+			li {
+				color: var(--fg);
+			}
+			ul {
+				padding-left: 1.25rem;
+			}
+			li {
+				margin: 0.35rem 0;
+			}
+			a {
+				color: var(--link);
+			}
+			.meta {
+				color: var(--muted);
+				margin: 0 0 1.5rem;
+			}
+			.summary {
+				background: var(--card);
+				border: 1px solid var(--border);
+				border-radius: 0.75rem;
+				padding: 1rem 1.25rem;
+			}
+			.summary p {
+				margin: 0;
+			}
+			code {
+				font-size: 0.9em;
+			}
+			footer {
+				margin-top: 3rem;
+				color: var(--muted);
+				font-size: 0.9rem;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>Zerostash Privacy Policy</h1>
+			<p class="meta">Last updated: 15 November 2026</p>
+
+			<div class="summary">
+				<p>
+					<strong>The Zerostash extension sends what you save only to the Zerostash server you set it up with, which runs in your own Cloudflare
+					account.</strong> The developer of Zerostash runs no service that receives, stores or sees your data. There is no analytics, tracking or
+					advertising.
+				</p>
+			</div>
+
+			<p>
+				This policy covers the Zerostash browser extension (for Chrome and Firefox) and the Zerostash server software. Zerostash is open-source
+				software (MIT licence); you deploy the server to your own Cloudflare account and connect the extension to it.
+			</p>
+
+			<h2>What the extension handles</h2>
+			<ul>
+				<li>
+					<strong>Your settings</strong>: your server's address and your server secret, stored on your device in the browser's extension storage
+					(<code>chrome.storage.local</code>). They are never synced or sent anywhere except to that server, to sign requests.
+				</li>
+				<li>
+					<strong>Pages you choose to save</strong>: when you click the toolbar button, use the keyboard shortcut or a right-click menu item, the
+					extension reads the address (URL) and title of that page and its preview metadata (description, preview image address, site name, icon
+					address and author, from the page's <code>&lt;head&gt;</code>). If you save a link or selected text from the right-click menu, it reads that
+					link or that text. A note you type in the extension is sent with it.
+				</li>
+				<li>
+					<strong>Link previews (optional permission)</strong>: if you grant the optional "all sites" permission, the extension fetches pages you have
+					already saved that still have no preview, using your browser (so pages behind your logins work), reads the same preview metadata and sends
+					it to your server. It does not read other pages, and does not collect your browsing history.
+				</li>
+				<li>
+					<strong>Your server's own pages</strong>: on the Zerostash web app's address only, a small script passes a "bookmark saved" notice from the
+					web app to the extension so previews appear sooner. It reads nothing else.
+				</li>
+			</ul>
+			<p>
+				All of this is sent only to the server address you entered, over HTTPS. The extension is used only to save and organise your bookmarks.
+			</p>
+
+			<h2>What Zerostash does not do</h2>
+			<ul>
+				<li>No data is sent to the developer of Zerostash or to any third party by the extension.</li>
+				<li>No analytics, telemetry, crash reporting, advertising or tracking.</li>
+				<li>Your data is not sold, shared for advertising, or used to judge creditworthiness or for any purpose other than the bookmark features you use.</li>
+			</ul>
+			<p>
+				The extension's use of information received from browser APIs complies with the
+				<a href="https://developer.chrome.com/docs/webstore/program-policies/limited-use">Chrome Web Store User Data Policy</a>, including its
+				Limited Use requirements.
+			</p>
+
+			<h2>Your server</h2>
+			<p>
+				Bookmarks, notes, tags, lists and uploaded files are stored in your own Cloudflare account (D1 database and R2 storage) and are subject to
+				your account's settings and Cloudflare's terms. You control them: you can export or delete them at any time.
+			</p>
+			<p>
+				If you turn on optional features on your server, it sends data to the services you choose: AI tags and summaries send a saved page's
+				address, title and text to the AI provider you configure (Cloudflare Workers AI by default, or your own Anthropic, OpenAI, Google or other
+				provider key); RSS feeds are fetched from the addresses you subscribe to; webhooks send bookmark events to the addresses you enter. Those
+				services handle data under their own policies.
+			</p>
+
+			<h2>Removing your data</h2>
+			<p>
+				Uninstalling the extension deletes its settings from your browser. Delete bookmarks in the Zerostash app, or delete the Zerostash Worker,
+				database and storage bucket in your Cloudflare dashboard to remove everything.
+			</p>
+
+			<h2>Changes and contact</h2>
+			<p>
+				Changes to this policy are published on this page, with a new "last updated" date. Questions:
+				<a href="https://github.com/jammutkarsh/zerostash/issues">open an issue on GitHub</a>.
+			</p>
+
+			<footer><a href="/">Zerostash</a></footer>
+		</main>
+	</body>
+</html>
